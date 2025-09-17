@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  stock-dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=stocks
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=stocks
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d stocks"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

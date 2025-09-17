@@ -1,0 +1,15 @@
+streamlit==1.45.1
+yfinance==0.2.61
+plotly==6.3.0
+pandas==2.2.3
+numpy==2.2.6
+scikit-learn==1.7.2
+sqlalchemy==2.0.41
+psycopg2-binary==2.9.10
+requests==2.32.3
+python-dateutil==2.9.0.post0
+pytz==2025.2
+scipy==1.16.2
+joblib==1.5.2
+threadpoolctl==3.6.0
+typing_extensions==4.14.0

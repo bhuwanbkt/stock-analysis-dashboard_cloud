@@ -1,0 +1,127 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+._*
+
+# PyCharm IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries
+.idea/vcs.xml
+.idea/jsLibraryMappings.xml
+.idea/dataSources.ids
+.idea/dataSources.xml
+.idea/dataSources.local.xml
+.idea/sqlDataSources.xml
+.idea/dynamic.xml
+.idea/uiDesigner.xml
+.idea/inspectionProfiles/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# PostgreSQL
+# Database dumps (if you're backing up databases)
+*.dump
+*.backup
+*.sql.gz
+
+# PostgreSQL data directory (if you have local instance)
+/pgdata/
+/data/
+
+# PostgreSQL log files
+postgresql.log
+pg_log/
+
+# Testing
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+test-results/
+unit.xml
+
+# Logs
+*.log
+logs/
+
+# Environment variables (CRITICAL for PostgreSQL credentials)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*
+secrets.yml
+config/secrets.yml
+
+# Docker
+docker-compose.override.yml
+
+# Build artifacts
+build/
+dist/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Database configuration files
+database.ini
+db_config.ini
+*.dbconfig
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
