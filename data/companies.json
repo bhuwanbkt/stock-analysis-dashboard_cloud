@@ -1,0 +1,225 @@
+{
+  "schema_version": 1,
+  "companies": [
+    {
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft Corp.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "GOOGL",
+      "name": "Alphabet Inc.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "AMZN",
+      "name": "Amazon.com Inc.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla Inc.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "META",
+      "name": "Meta Platforms Inc.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "NVDA",
+      "name": "Nvidia Corp.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "NFLX",
+      "name": "Netflix Inc.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "INTC",
+      "name": "Intel Corp.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "AMD",
+      "name": "Advanced Micro Devices",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "PLTR",
+      "name": "Palantir Technologies",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "UBER",
+      "name": "Uber Technologies",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "JPM",
+      "name": "JPMorgan Chase",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "V",
+      "name": "Visa Inc.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "DIS",
+      "name": "Walt Disney Co.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "PYPL",
+      "name": "PayPal Holdings",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "GS",
+      "name": "Goldman Sachs",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "BA",
+      "name": "Boeing Co.",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "XOM",
+      "name": "Exxon Mobil",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    },
+    {
+      "symbol": "JNJ",
+      "name": "Johnson & Johnson",
+      "overview": null,
+      "sector": null,
+      "industry": null,
+      "website": null,
+      "currency": null,
+      "source": "Repository seed; API refresh pending",
+      "updated_at": null
+    }
+  ]
+}

@@ -1,39 +1,30 @@
-# dashboard/app.py
+import sys
+import os
 import streamlit as st
 
-# Set page configuration MUST be the FIRST Streamlit command
+# Page configuration
 st.set_page_config(
     page_title="Advanced Stock Analysis Dashboard",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Now import other modules AFTER set_page_config
-import sys
-import os
 import yfinance as yf
 import plotly.graph_objects as go
-import plotly.express as px
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-import warnings
-from functools import lru_cache
 from typing import Dict, List, Tuple, Optional, Union
 
-warnings.filterwarnings('ignore')
+
 
 # Add project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Import ETL functions
+# Import ETL functions instead of reimplementing them
 try:
     from etl.extract import extract_stock_data
     from etl.transform import add_indicators
-    from etl.load import load_to_postgres, fetch_from_postgres, create_database
+    from etl.load import load_to_postgres
 except ImportError as e:
     st.error(f"ETL modules not found: {e}")
 
@@ -53,15 +44,6 @@ except ImportError as e:
 
     def load_to_postgres(df, table_name):
         st.sidebar.info("Database functionality not available")
-        return True
-
-
-    def fetch_from_postgres(table_name):
-        return None
-
-
-    def create_database():
-        return True
 
 # Constants
 PERIOD_OPTIONS = {
@@ -73,33 +55,12 @@ PERIOD_OPTIONS = {
     "5 Years": "5y"
 }
 
-TOP_STOCKS = {
-    "AAPL": "Apple Inc.",
-    "MSFT": "Microsoft Corp.",
-    "GOOGL": "Alphabet Inc.",
-    "AMZN": "Amazon.com Inc.",
-    "TSLA": "Tesla Inc.",
-    "META": "Meta Platforms Inc.",
-    "NVDA": "Nvidia Corp.",
-    "NFLX": "Netflix Inc.",
-    "INTC": "Intel Corp.",
-    "AMD": "Advanced Micro Devices"
-}
+from dashboard.catalog import load_catalog, search_catalog
+from dashboard.forecast import forecast
 
-ADDITIONAL_STOCKS = {
-    "PLTR": "Palantir Technologies",
-    "UBER": "Uber Technologies",
-    "JPM": "JPMorgan Chase",
-    "V": "Visa Inc.",
-    "DIS": "Walt Disney Co.",
-    "PYPL": "PayPal Holdings",
-    "GS": "Goldman Sachs",
-    "BA": "Boeing Co.",
-    "XOM": "Exxon Mobil",
-    "JNJ": "Johnson & Johnson"
-}
-
-ALL_TICKERS = {**TOP_STOCKS, **ADDITIONAL_STOCKS}
+COMPANIES = load_catalog()
+ALL_TICKERS = {symbol: row['name'] for symbol, row in COMPANIES.items()}
+TOP_STOCKS = dict(list(ALL_TICKERS.items())[:10])
 
 # Custom CSS for styling
 st.markdown("""
@@ -145,15 +106,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-@lru_cache(maxsize=32)
+@st.cache_data(ttl=900, max_entries=32, show_spinner=False)
 def download_stock_data(ticker: str, period: str) -> Optional[pd.DataFrame]:
     """Cache stock data downloads to reduce API calls using the ETL extract function"""
     try:
         df = extract_stock_data(ticker, period)
-        if df.empty:
+        if df is None or df.empty:
             return None
 
-        # Handle MultiIndex columns by using the first level only
+        # Handle MultiIndex columns
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
@@ -163,77 +124,9 @@ def download_stock_data(ticker: str, period: str) -> Optional[pd.DataFrame]:
         return None
 
 
-def prepare_ml_data(df: pd.DataFrame, days_to_predict: int = 7) -> Optional[Tuple[pd.DataFrame, List[str]]]:
-    """Prepare data for machine learning"""
-    df_ml = df.copy()
-
-    # Create features
-    df_ml['Price_Change'] = df_ml['Close'].pct_change()
-    df_ml['Volume_Change'] = df_ml['Volume'].pct_change()
-
-    # Create lag features
-    for lag in range(1, 6):
-        df_ml[f'Close_Lag_{lag}'] = df_ml['Close'].shift(lag)
-        df_ml[f'Volume_Lag_{lag}'] = df_ml['Volume'].shift(lag)
-
-    # Create target
-    df_ml['Future_Close'] = df_ml['Close'].shift(-days_to_predict)
-    df_ml = df_ml.dropna()
-
-    if len(df_ml) < 50:
-        return None, None
-
-    # Feature columns
-    feature_columns = ['Close', 'Volume', 'Price_Change', 'Volume_Change']
-    feature_columns.extend([f'Close_Lag_{i}' for i in range(1, 6)])
-    feature_columns.extend([f'Volume_Lag_{i}' for i in range(1, 6)])
-
-    # Add technical indicators
-    tech_indicators = ['MA_10', 'MA_20', 'MA_50', 'RSI', 'MACD', 'ATR', 'OBV']
-    for indicator in tech_indicators:
-        if indicator in df_ml.columns:
-            feature_columns.append(indicator)
-
-    return df_ml, feature_columns
-
-
-def predict_stock_price(df: pd.DataFrame, days_to_predict: int = 7) -> Tuple[
-    Optional[float], Optional[float], Optional[float]]:
-    """Predict stock price using Random Forest"""
-    try:
-        result = prepare_ml_data(df, days_to_predict)
-        if result is None:
-            return None, None, None
-
-        df_ml, feature_columns = result
-
-        X = df_ml[feature_columns]
-        y = df_ml['Future_Close']
-
-        # Split and scale
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
-
-        # Train model
-        model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
-        model.fit(X_train_scaled, y_train)
-
-        # Predict
-        train_score = model.score(X_train_scaled, y_train)
-        test_score = model.score(X_test_scaled, y_test)
-
-        last_data = df_ml.iloc[-1][feature_columns].values.reshape(1, -1)
-        last_data_scaled = scaler.transform(last_data)
-        predicted_price = model.predict(last_data_scaled)[0]
-
-        confidence = min(0.95, max(0.5, test_score * 1.2))
-        return predicted_price, confidence, test_score
-
-    except Exception as e:
-        print(f"Error in ML prediction: {e}")
-        return None, None, None
+@st.cache_data(ttl=3600, max_entries=16, show_spinner=False)
+def predict_stock_price(df, days_to_predict=7):
+    return forecast(df, days_to_predict)
 
 
 def create_sparkline_chart(data: pd.Series, color: str) -> go.Figure:
@@ -273,7 +166,7 @@ def display_top_stocks():
             spark_fig = create_sparkline_chart(df_top['Close'],
                                                '#00C805' if pct_change >= 0 else '#FF5000')
 
-            delta_color = "normal" if pct_change >= 0 else "inverse"
+            delta_color = "normal"
             col.metric(
                 label=ticker,
                 value=f"${last_price:.2f}",
@@ -286,16 +179,80 @@ def display_top_stocks():
             col.error(f"{ticker} data unavailable")
 
 
+def main():
+    """Main application function"""
+    st.markdown('<h1 class="main-header">Advanced Stock Analysis Dashboard</h1>', unsafe_allow_html=True)
+
+    # Sidebar
+    st.sidebar.header("Settings")
+    selected_period = st.sidebar.selectbox(
+        "Select Time Period",
+        list(PERIOD_OPTIONS.keys()),
+        index=2
+    )
+    period_value = PERIOD_OPTIONS[selected_period]
+
+    st.sidebar.header("ML Prediction Settings")
+    prediction_days = st.sidebar.selectbox("Trading sessions ahead", [1, 5, 7, 10, 20, 30], index=2)
+    enable_forecast = st.sidebar.checkbox("Show experimental forecast", value=False)
+    st.sidebar.caption("Forecasts use two years of history, independently of the chart period.")
+
+    st.subheader("Search a company")
+    search_input = st.text_input("Company name or ticker", placeholder="Apple or AAPL")
+    matches = search_catalog(COMPANIES, search_input)
+    if not matches:
+        st.info("No saved company matches. Try another name or ticker.")
+        return
+    selected_ticker = st.selectbox("Select stock", matches,
+                                   format_func=lambda symbol: f"{COMPANIES[symbol]['name']} ({symbol})")
+    profile = COMPANIES[selected_ticker]
+    with st.expander("About this company", expanded=True):
+        st.write(profile.get('overview') or "Company overview has not been downloaded yet.")
+        if profile.get('sector'):
+            st.caption(f"Sector: {profile['sector']} · Industry: {profile.get('industry') or 'Unavailable'}")
+        st.caption(f"Profile source: {profile['source']} · Updated: {profile.get('updated_at') or 'Pending'}")
+    analyze_stock(selected_ticker, period_value, prediction_days, enable_forecast)
+    with st.expander("Popular stocks"):
+        if st.checkbox("Load popular stock prices", value=False):
+            display_top_stocks()
+
+
+def analyze_stock(ticker: str, period: str, prediction_days: int, enable_forecast: bool):
+    """Analyze a single stock"""
+    try:
+        with st.spinner(f"Loading {ticker} data..."):
+            df = download_stock_data(ticker, period)
+
+        if df is None or df.empty:
+            st.error(f"Stock '{ticker}' not found")
+            return
+
+        # Use the ETL transform function instead of reimplementing it
+        df = add_indicators(df)
+        latest = df.iloc[-1]
+
+        # Database storage is optional in the zero-cost hosted experience.
+        if os.getenv('ENABLE_DATABASE_EXPORT') == '1' and st.sidebar.button("Save prices to database"):
+            try:
+                if load_to_postgres(df, table_name=ticker.lower()):
+                    st.sidebar.success("Prices saved")
+                else:
+                    st.sidebar.error("Database export is unavailable. Please try again later.")
+            except Exception:
+                st.sidebar.error("Database export is unavailable. Please try again later.")
+
+        # Display stock analysis
+        display_stock_analysis(ticker, df, latest, prediction_days, enable_forecast)
+
+    except Exception as e:
+        st.error(f"Error loading data for '{ticker}': {str(e)}")
+
+
 def display_stock_analysis(ticker: str, df: pd.DataFrame, latest: pd.Series,
-                           prediction_days: int, confidence_threshold: float):
+                           prediction_days: int, enable_forecast: bool):
     """Display comprehensive stock analysis"""
     # Get latest data
-    volume_val = latest['Volume']
-    if hasattr(volume_val, 'iloc'):
-        volume = int(volume_val.iloc[0]) if isinstance(volume_val, pd.Series) else int(volume_val)
-    else:
-        volume = int(volume_val)
-
+    volume = int(latest['Volume'])
     open_price = latest['Open']
     high_price = latest['High']
     low_price = latest['Low']
@@ -320,10 +277,21 @@ def display_stock_analysis(ticker: str, df: pd.DataFrame, latest: pd.Series,
         volatility = 0
 
     # ML Prediction
-    predicted_price, confidence, model_score = predict_stock_price(df, prediction_days)
+    result = {'available': False, 'reason': 'Enable the experimental forecast in Settings to run it.'}
+    if enable_forecast:
+        with st.spinner("Evaluating forecast against historical prices..."):
+            history = download_stock_data(ticker, '2y')
+            if history is not None:
+                try:
+                    result = predict_stock_price(history, prediction_days)
+                except ValueError as exc:
+                    result = {'available': False, 'reason': str(exc)}
+            else:
+                result = {'available': False, 'reason': 'Forecast history is unavailable. Try again later.'}
+    st.caption(f"Yahoo Finance via yfinance · Latest price bar: {latest['Date']} · Downloads cached for 15 minutes. Prices may be delayed and adjusted for corporate actions.")
 
     # Display metrics
-    st.subheader(f"📊 {ticker} - {ALL_TICKERS.get(ticker, 'N/A')} Overview")
+    st.subheader(f"{ticker} - {ALL_TICKERS.get(ticker, 'N/A')} Overview")
 
     # Main metrics row
     col1, col2, col3, col4 = st.columns(4)
@@ -355,25 +323,12 @@ def display_stock_analysis(ticker: str, df: pd.DataFrame, latest: pd.Series,
     col5, col6 = st.columns(2)
 
     with col5:
-        if predicted_price is not None:
-            pred_change = ((predicted_price - close_price) / close_price) * 100
-            pred_class = "prediction-positive" if pred_change > 0 else "prediction-negative"
-            st.markdown(f"""
-            <div class="metric-card">
-                <h4>ML Prediction ({prediction_days} days)</h4>
-                <p class="{pred_class}">Predicted Price: ${predicted_price:.2f}</p>
-                <p>Expected Change: <span class="{pred_class}">{pred_change:.2f}%</span></p>
-                <p>Model Confidence: {confidence:.2%}</p>
-                <p>Model Score: {model_score:.4f}</p>
-            </div>
-            """, unsafe_allow_html=True)
+        st.subheader(f"Experimental forecast · {prediction_days} trading sessions")
+        if result['available']:
+            st.metric("Estimated price", f"${result['predicted_price']:.2f}", f"{result['predicted_return']:.2%}")
+            st.caption(f"Selected method: {result['model']} · Based on bar: {result['as_of']}")
         else:
-            st.markdown("""
-            <div class="metric-card">
-                <h4>ML Prediction</h4>
-                <p>Insufficient data for reliable prediction</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.info(result['reason'])
 
     with col6:
         # 52-week high/low
@@ -384,7 +339,7 @@ def display_stock_analysis(ticker: str, df: pd.DataFrame, latest: pd.Series,
 
         st.markdown(f"""
         <div class="metric-card">
-            <h4>52-Week Range</h4>
+            <h4>Selected Period Range</h4>
             <p>High: ${high_52:.2f} | Low: ${low_52:.2f}</p>
             <div style="background: #e0e0e0; height: 10px; border-radius: 5px; margin: 10px 0;">
                 <div style="background: #00C805; height: 100%; border-radius: 5px; width: {width_percent}%;"></div>
@@ -394,7 +349,7 @@ def display_stock_analysis(ticker: str, df: pd.DataFrame, latest: pd.Series,
         """, unsafe_allow_html=True)
 
     # Tabs: Price Charts, Technical Indicators, ML Insights
-    tabs = st.tabs(["📈 Price Charts", "📊 Technical Indicators", "🤖 ML Insights"])
+    tabs = st.tabs(["Price Charts", "Technical Indicators", "ML Insights"])
 
     # Tab 1: Price Charts
     with tabs[0]:
@@ -648,227 +603,30 @@ def display_stock_analysis(ticker: str, df: pd.DataFrame, latest: pd.Series,
                 )
                 st.plotly_chart(fig_obv, use_container_width=True)
 
-    # Tab 3: ML Insights
+    # Tab 3: honest endpoint forecast, without invented daily paths or confidence.
     with tabs[2]:
-        if predicted_price is not None and confidence >= confidence_threshold:
-            st.subheader("Machine Learning Predictions")
-
-            # Generate predictions for multiple days
-            future_dates = [datetime.now() + timedelta(days=i) for i in range(1, prediction_days + 1)]
-            future_predictions = []
-
-            # Simple projection based on the prediction
-            current_price = close_price
-            daily_change = (predicted_price / current_price) ** (1 / prediction_days) - 1
-
-            for i in range(1, prediction_days + 1):
-                future_price = current_price * (1 + daily_change) ** i
-                future_predictions.append(future_price)
-
-            # Create prediction chart
-            fig_pred = go.Figure()
-
-            # Historical data
-            fig_pred.add_trace(go.Scatter(
-                x=df['Date'][-30:],  # Last 30 days
-                y=df['Close'][-30:],
-                mode='lines',
-                name='Historical',
-                line=dict(color='#00C805', width=2)
-            ))
-
-            # Prediction data
-            fig_pred.add_trace(go.Scatter(
-                x=future_dates,
-                y=future_predictions,
-                mode='lines+markers',
-                name='Prediction',
-                line=dict(color='#FF9900', width=2, dash='dash')
-            ))
-
-            # Confidence interval
-            upper_bound = [p * (1 + (1 - confidence) / 2) for p in future_predictions]
-            lower_bound = [p * (1 - (1 - confidence) / 2) for p in future_predictions]
-
-            fig_pred.add_trace(go.Scatter(
-                x=future_dates + future_dates[::-1],
-                y=upper_bound + lower_bound[::-1],
-                fill='toself',
-                fillcolor='rgba(255, 153, 0, 0.2)',
-                line=dict(color='rgba(255,255,255,0)'),
-                name='Confidence Interval'
-            ))
-
-            fig_pred.update_layout(
-                title=f"{prediction_days}-Day Price Prediction",
-                xaxis_title="Date",
-                yaxis_title="Price ($)",
-                template="plotly_white",
-                height=500
-            )
-            st.plotly_chart(fig_pred, use_container_width=True)
-
-            # Trading signals based on indicators
-            st.subheader("Trading Signals")
-
-            signals = []
-
-            # RSI signal
-            if 'RSI' in df.columns:
-                rsi = df['RSI'].iloc[-1]
-                if rsi > 70:
-                    signals.append(("RSI", "Overbought", "Sell", "red"))
-                elif rsi < 30:
-                    signals.append(("RSI", "Oversold", "Buy", "green"))
-
-            # MACD signal
-            if all(col in df.columns for col in ['MACD', 'MACD_Signal']):
-                macd = df['MACD'].iloc[-1]
-                signal = df['MACD_Signal'].iloc[-1]
-                if macd > signal:
-                    signals.append(("MACD", "Bullish crossover", "Buy", "green"))
-                else:
-                    signals.append(("MACD", "Bearish crossover", "Sell", "red"))
-
-            # Moving Average signal
-            if all(col in df.columns for col in ['MA_10', 'MA_50']):
-                ma10 = df['MA_10'].iloc[-1]
-                ma50 = df['MA_50'].iloc[-1]
-                if ma10 > ma50:
-                    signals.append(("Moving Average", "Golden cross", "Buy", "green"))
-                else:
-                    signals.append(("Moving Average", "Death cross", "Sell", "red"))
-
-            # Display signals
-            if signals:
-                for indicator, condition, action, color in signals:
-                    st.markdown(f"""
-                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin: 5px 0; border-left: 4px solid {color}">
-                        <strong>{indicator}</strong>: {condition} - <strong>{action}</strong>
-                    </div>
-                    """, unsafe_allow_html=True)
+        if result['available']:
+            st.subheader("Historical forecast quality")
+            c1, c2 = st.columns(2)
+            c1.metric("Selected method: average return error", f"{result['mae_pct']:.2f} percentage points")
+            c2.metric("Unchanged-price baseline error", f"{result['baseline_mae_pct']:.2f} percentage points")
+            st.caption(f"Untouched test: {result['test_rows']} origins from {result['test_start']} to {result['test_end']}. Training: {result['training_rows']} labelled rows.")
+            if result['beats_baseline_on_holdout']:
+                st.success("Selected method had lower average error than unchanged price on this test period.")
             else:
-                st.info("No strong trading signals detected based on current indicators.")
-
+                st.info("This test does not show an improvement over assuming price stays unchanged.")
+            if result['direction_accuracy'] is not None:
+                st.write(f"Historical direction accuracy: {result['direction_accuracy']:.1%}")
+            st.write("The method is selected on three earlier time-ordered validation windows. A separate latest test window reports its performance. Training labels are kept clear of future test origins.")
+            st.caption("One endpoint is predicted. Trading sessions exclude weekends and exchange holidays; no calendar date or daily path is implied. Historical errors are not a confidence probability or a promise of future accuracy.")
+            st.caption("Overlapping multi-session targets are correlated; the number of test origins is not the number of independent observations.")
         else:
-            st.warning("Insufficient data or low confidence for ML predictions. Try selecting a longer time period.")
-
-            # Show indicator summary instead
-            st.subheader("Technical Indicator Summary")
-
-            if 'RSI' in df.columns:
-                rsi = df['RSI'].iloc[-1]
-                st.write(
-                    f"**RSI**: {rsi:.2f} {'(Overbought)' if rsi > 70 else '(Oversold)' if rsi < 30 else '(Neutral)'}")
-
-            if all(col in df.columns for col in ['MACD', 'MACD_Signal']):
-                macd = df['MACD'].iloc[-1]
-                signal = df['MACD_Signal'].iloc[-1]
-                st.write(f"**MACD**: {macd:.4f} | **Signal**: {signal:.4f} | **Difference**: {macd - signal:.4f}")
-
-            if all(col in df.columns for col in ['MA_10', 'MA_50']):
-                ma10 = df['MA_10'].iloc[-1]
-                ma50 = df['MA_50'].iloc[-1]
-                st.write(
-                    f"**10-Day MA**: ${ma10:.2f} | **50-Day MA**: ${ma50:.2f} | **Spread**: {((ma10 - ma50) / ma50) * 100:.2f}%")
+            st.info(result['reason'])
+        st.caption("Experimental analysis for learning, not a trading recommendation.")
 
     # Display raw data
     with st.expander("View Raw Data"):
         st.dataframe(df.tail(20), use_container_width=True)
-
-
-def analyze_stock(ticker: str, period: str, prediction_days: int, confidence_threshold: float):
-    """Analyze a single stock"""
-    try:
-        with st.spinner(f"Loading {ticker} data..."):
-            df = download_stock_data(ticker, period)
-
-        if df is None or df.empty:
-            st.error(f"Stock '{ticker}' not found")
-            return
-
-        # Use the ETL transform function instead of reimplementing it
-        df = add_indicators(df)
-        latest = df.iloc[-1]
-
-        # Test database connection first
-        db_connected = create_database()
-
-        # Load to database using ETL load function
-        if db_connected:
-            try:
-                success = load_to_postgres(df, table_name=ticker.lower())
-                if success:
-                    st.sidebar.success(f"{ticker} data saved to database")
-                else:
-                    st.sidebar.warning(f"Could not save {ticker} to database")
-            except Exception as e:
-                st.sidebar.warning(f"Database error: {e}")
-        else:
-            st.sidebar.warning("Database not connected. Data won't be saved.")
-
-        # Display stock analysis
-        display_stock_analysis(ticker, df, latest, prediction_days, confidence_threshold)
-
-    except Exception as e:
-        st.error(f"Error loading data for '{ticker}': {str(e)}")
-
-
-def main():
-    """Main application function"""
-    st.markdown('<h1 class="main-header"> Advanced Stock Analysis Dashboard</h1>', unsafe_allow_html=True)
-
-    # Sidebar
-    st.sidebar.header("Settings")
-    selected_period = st.sidebar.selectbox(
-        "Select Time Period",
-        list(PERIOD_OPTIONS.keys()),
-        index=2
-    )
-    period_value = PERIOD_OPTIONS[selected_period]
-
-    st.sidebar.header("ML Prediction Settings")
-    prediction_days = st.sidebar.slider("Days to predict ahead", 1, 30, 7)
-    ml_confidence_threshold = st.sidebar.slider("ML Confidence Threshold", 0.1, 0.9, 0.7)
-
-    # Top Stocks
-    st.subheader("Top 10 Stocks")
-    display_top_stocks()
-
-    # Stock Search
-    st.subheader("Search Any Stock")
-    search_input = st.text_input("Type ticker or company name", key="search").upper()
-
-    suggestions = {}
-    if search_input:
-        suggestions = {k: v for k, v in ALL_TICKERS.items() if search_input in k or search_input in v.upper()}
-
-    if suggestions:
-        selected_ticker = st.selectbox(
-            "Select stock",
-            list(suggestions.keys()),
-            format_func=lambda x: f"{x} - {suggestions[x]}"
-        )
-    else:
-        selected_ticker = st.selectbox(
-            "Select stock",
-            list(ALL_TICKERS.keys()),
-            format_func=lambda x: f"{x} - {ALL_TICKERS[x]}"
-        )
-
-    if selected_ticker:
-        analyze_stock(selected_ticker, period_value, prediction_days, ml_confidence_threshold)
-    else:
-        st.info("Select a stock from the sidebar or search for a ticker to begin analysis.")
-
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    <div style="text-align: center; color: #666;">
-        <p>Advanced Stock Analysis Dashboard | Powered by yFinance, Streamlit, and Machine Learning</p>
-        <p>Disclaimer: This is for educational purposes only. Not financial advice.</p>
-    </div>
-    """, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
