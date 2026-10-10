@@ -72,7 +72,8 @@ def get_history(symbol, period='2y'):
         # Ticker.history avoids the legacy multi-ticker downloader's global state.
         raw = yf.Ticker(symbol).history(period=period, interval='1d', auto_adjust=True,
                                         timeout=12, raise_errors=True)
-        return {'prices': clean_prices(raw), 'fetched_at': datetime.now(timezone.utc).isoformat()}
+        return {'prices': clean_prices(raw), 'downloaded_rows': len(raw) if raw is not None else 0,
+                'period': period, 'fetched_at': datetime.now(timezone.utc).isoformat()}
     except MarketUnavailable:
         raise
     except Exception as exc:
@@ -83,7 +84,7 @@ def get_history(symbol, period='2y'):
 
 
 @st.cache_data(ttl=86400, max_entries=24, show_spinner=False)
-def get_forecast(symbol, prices, horizon):
+def get_forecast(symbol, prices, horizon, model_version='three-model-v1'):
     from dashboard.forecast import forecast
     slot = model_slot()
     if not slot.acquire(blocking=False):

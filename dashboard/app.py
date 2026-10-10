@@ -143,6 +143,8 @@ def main():
     c3.metric('Daily volatility', f"{stats['daily_volatility_pct']:.2f}%" if stats['daily_volatility_pct'] is not None else '—')
     c4.metric('Largest period drawdown', f"{stats['max_drawdown_pct']:.2f}%")
     st.caption(f"Latest bar: {latest.Date:%Y-%m-%d} · Downloaded: {packet['fetched_at'][:16].replace('T',' ')} UTC · Yahoo Finance via yfinance")
+    downloaded = packet.get('downloaded_rows', len(history))
+    st.caption(f"History: {history.Date.iloc[0]:%Y-%m-%d} to {latest.Date:%Y-%m-%d} · {downloaded:,} downloaded rows · {len(history):,} valid daily rows · {len(frame):,} rows in this chart. Browsing saves no rows to Postgres.")
     st.caption('Daily prices are adjusted for corporate actions, may be delayed, and can include an unfinished session. Returns are price returns, not a trading-strategy result.')
 
     # Render only the selected view. Streamlit tabs eagerly execute every tab body.
@@ -174,6 +176,7 @@ def main():
                 except MarketUnavailable as exc:
                     st.info(str(exc))
         with st.expander('Daily prices and export'):
+            st.caption('Prices stay in a shared memory cache for up to four hours, not in Postgres. A restart clears the cache. Any older database exports remain until explicitly replaced or removed; there is no automatic deletion job.')
             st.dataframe(frame[['Date','Open','High','Low','Close','Volume']].tail(30), hide_index=True)
             st.download_button('Download selected daily prices (CSV)',
                                frame[['Date','Open','High','Low','Close','Volume']].to_csv(index=False),
@@ -224,7 +227,7 @@ def main():
     else:
         st.subheader('Experimental forecast')
         horizon=st.selectbox('Trading sessions ahead',[1,5,7,10,20,30],index=2)
-        st.caption('Random Forest competes with unchanged price in earlier chronological validation windows. Testing uses a separate latest window.')
+        st.caption('Ridge regression, Random Forest, and gradient boosting compete with unchanged price in the same earlier chronological validation windows. The best validation method is tested on a separate latest window.')
         if st.button('Run forecast') and cooldown('forecast',20):
             try:
                 with st.spinner('Checking historical forecast quality...'):
@@ -238,16 +241,23 @@ def main():
             if result['available']:
                 st.metric('Estimated endpoint (quote units)',f"{result['predicted_price']:,.2f}",f"{result['predicted_return']:+.2%}")
                 st.write(f"Selected method: **{result['model']}**")
+                if result.get('validation_scores'):
+                    scores = pd.DataFrame(result['validation_scores']).rename(columns={
+                        'method': 'Method', 'mae_pct': 'Validation error (percentage points)', 'selected': 'Selected'})
+                    st.dataframe(scores, hide_index=True)
+                    st.caption('Lower validation error is better. This table uses earlier development data; it is not the separate test result or a confidence score.')
                 a,b=st.columns(2)
                 a.metric('Selected method: average return error',f"{result['mae_pct']:.2f} percentage points")
                 b.metric('Unchanged-price baseline error',f"{result['baseline_mae_pct']:.2f} percentage points")
                 if result['model']=='Unchanged-price baseline':
-                    st.info('Random Forest did not beat unchanged price during development validation. An unchanged estimate is a fallback, not evidence the stock will stay flat.')
+                    st.info('None of the learned methods beat unchanged price during development validation. An unchanged estimate is a fallback, not evidence the stock will stay flat.')
                 elif not result['beats_baseline_on_holdout']:
                     st.warning('The selected model did not beat unchanged price on the separate latest test window.')
                 else:
                     st.success('The selected model had lower average error on this latest test window. Future performance is unknown.')
                 st.caption(f"{result['test_rows']} test origins · {result['training_rows']} labelled rows · Based on bar {result['as_of'][:10]}")
+                if 'input_rows' in result:
+                    st.caption(f"Model input: {result['input_rows']} daily rows from {result['history_start'][:10]}. Features use past prices and volume; labels require a known price {horizon} trading sessions later. Only the selected method is refit for the endpoint estimate.")
             else:
                 st.info(result['reason'])
         st.caption('Trading sessions exclude weekends and exchange holidays. Overlapping targets are correlated. Historical error is not a confidence probability. No daily path or guaranteed future return is implied.')

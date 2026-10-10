@@ -1,7 +1,10 @@
 """Small CPU forecast with purged chronological validation and untouched holdout."""
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import Ridge
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import TimeSeriesSplit
 
 
@@ -32,6 +35,15 @@ def new_model():
                                  max_features=0.8, random_state=42, n_jobs=1)
 
 
+def model_factories():
+    # Fit preprocessing inside each training fold; never scale using future rows.
+    return {'Ridge regression': lambda: make_pipeline(StandardScaler(), Ridge(alpha=10.0)),
+            'Random Forest': new_model,
+            'Gradient boosting': lambda: GradientBoostingRegressor(
+                n_estimators=60, max_depth=2, min_samples_leaf=15,
+                learning_rate=0.03, loss='huber', random_state=42)}
+
+
 def forecast(df, horizon=7):
     if not isinstance(horizon, int) or not 1 <= horizon <= 30:
         raise ValueError('Horizon must be 1–30 trading sessions.')
@@ -46,24 +58,37 @@ def forecast(df, horizon=7):
     dev_X, dev_y = X.iloc[:split-horizon], y.iloc[:split-horizon]
     test_X, test_y = X.iloc[split:], y.iloc[split:]
     # Select on development folds only. Purge labels spanning the next test origin.
-    model_errors, baseline_errors = [], []
+    baseline = 'Unchanged-price baseline'
+    factories = model_factories()
+    errors = {name: [] for name in [baseline, *factories]}
     fold_ranges = []
     for train, valid in TimeSeriesSplit(n_splits=3, gap=horizon).split(dev_X):
-        model = new_model().fit(dev_X.iloc[train], dev_y.iloc[train])
-        model_errors.extend(np.abs(model.predict(dev_X.iloc[valid]) - dev_y.iloc[valid]))
-        baseline_errors.extend(np.abs(dev_y.iloc[valid]))
+        errors[baseline].extend(np.abs(dev_y.iloc[valid]))
+        for name, factory in factories.items():
+            model = factory().fit(dev_X.iloc[train], dev_y.iloc[train])
+            errors[name].extend(np.abs(model.predict(dev_X.iloc[valid]) - dev_y.iloc[valid]))
         fold_ranges.append({'train_last': int(dev_X.index[train[-1]]), 'valid_first': int(dev_X.index[valid[0]])})
-    use_model = np.mean(model_errors) < np.mean(baseline_errors)
-    test_prediction = new_model().fit(dev_X, dev_y).predict(test_X) if use_model else np.zeros(len(test_X))
+    validation_mae = {name: float(np.mean(values)) for name, values in errors.items()}
+    # Baseline wins exact ties. The holdout never selects a method or its settings.
+    selected = min(validation_mae, key=validation_mae.get)
+    use_model = selected != baseline
+    test_prediction = factories[selected]().fit(dev_X, dev_y).predict(test_X) if use_model else np.zeros(len(test_X))
     # Report honest out-of-sample errors even when the selected model loses here.
     error = np.asarray(test_y) - test_prediction
     mae = float(np.mean(np.abs(error)))
     baseline_mae = float(np.mean(np.abs(test_y)))
     # Refit with all now-known labels; inference uses the latest UNLABELLED row.
-    latest_return = float(new_model().fit(X, y).predict(features.iloc[[-1]])[0]) if use_model else 0.0
+    latest_return = float(factories[selected]().fit(X, y).predict(features.iloc[[-1]])[0]) if use_model else 0.0
     last_price = float(frame.Close.iloc[-1])
+    if not np.isfinite(latest_return) or latest_return <= -1:
+        return {'available': False, 'reason': 'The selected method produced an invalid endpoint. No estimate is shown.'}
     return {
-        'available': True, 'model': 'Random Forest' if use_model else 'Unchanged-price baseline',
+        'available': True, 'model': selected,
+        'validation_scores': [{'method': name, 'mae_pct': 100 * score, 'selected': name == selected}
+                              for name, score in validation_mae.items()],
+        'validation_rows': len(errors[baseline]), 'input_rows': len(frame),
+        'feature_rows': int(features.notna().all(axis=1).sum()),
+        'history_start': str(frame.Date.iloc[0]), 'horizon': horizon,
         'predicted_price': last_price * (1 + latest_return), 'predicted_return': latest_return,
         'mae_pct': 100 * mae, 'baseline_mae_pct': 100 * baseline_mae,
         'beats_baseline_on_holdout': mae < baseline_mae,
