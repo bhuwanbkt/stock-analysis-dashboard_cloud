@@ -5,18 +5,21 @@ from etl import shared_store
 import dashboard
 
 
-def test_current_runtime_does_not_reload_or_contact_database():
-    with patch('dashboard.runtime.importlib.reload') as reload, \
+def test_current_runtime_activates_once_without_reload_or_database_requests():
+    with patch('dashboard.runtime._active_version', None), \
+         patch('dashboard.runtime.importlib.reload') as reload, \
          patch('dashboard.storage._store') as store, \
          patch('dashboard.market.get_history') as history:
         prepare_runtime()
+        prepare_runtime()
         reload.assert_not_called()
-        store.assert_not_called(); store.clear.assert_not_called()
-        history.assert_not_called(); history.clear.assert_not_called()
+        store.assert_not_called(); store.clear.assert_called_once()
+        history.assert_not_called(); history.clear.assert_called_once()
 
 
 def test_old_runtime_reloads_dependencies_and_clears_only_memory_caches():
-    with patch.object(shared_store, 'RUNTIME_VERSION', 'old'), \
+    with patch('dashboard.runtime._active_version', None), \
+         patch.object(shared_store, 'RUNTIME_VERSION', 'old'), \
          patch('dashboard.runtime.importlib.reload', side_effect=lambda module: module) as reload, \
          patch('dashboard.storage._store') as store, \
          patch('dashboard.storage._maintenance') as maintenance, \
@@ -31,7 +34,8 @@ def test_old_runtime_reloads_dependencies_and_clears_only_memory_caches():
 
 
 def test_streamlit_stale_package_attribute_does_not_trigger_invalid_reload():
-    with patch.object(dashboard, 'storage', object()), \
+    with patch('dashboard.runtime._active_version', None), \
+         patch.object(dashboard, 'storage', object()), \
          patch('dashboard.runtime.importlib.reload') as reload:
         prepare_runtime()
         reload.assert_not_called()
