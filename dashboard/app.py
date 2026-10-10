@@ -5,6 +5,8 @@ import streamlit as st
 
 st.set_page_config(page_title='Stock Explorer', page_icon='📈', layout='wide')
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from dashboard.runtime import prepare_runtime
+prepare_runtime()
 
 page = st.navigation([
     st.Page('home.py', title='Stock Explorer', icon='📈', default=True),

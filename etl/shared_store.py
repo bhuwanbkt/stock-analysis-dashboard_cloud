@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 MAX_COMPANIES = 50
+RUNTIME_VERSION = 'five-year-predictions-v1'
 MAX_FORECASTS = 5000
 HISTORY_YEARS = 5
 MAX_PRICE_ROWS = 1500

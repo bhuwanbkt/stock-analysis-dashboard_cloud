@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 from dashboard.storage import get_store
+RUNTIME_VERSION = 'five-year-predictions-v1'
 
 SYMBOL_RE = re.compile(r'^[A-Z0-9][A-Z0-9.\-^=]{0,14}$|^\^[A-Z0-9.\-]{1,14}$')
 
