@@ -2,14 +2,164 @@
 
 A lightweight Streamlit dashboard for understanding historical stock performance and price risk. Its main views show price changes, price swings, drops from earlier peaks, and company comparisons. Prediction is a secondary experiment, not the main product promise. Optional Neon PostgreSQL storage shares data across visitors and survives app restarts. The app uses one CPU process, no LLM calls, and no separate model server.
 
-## Run
+## Project structure
+
+| Path | Purpose |
+| --- | --- |
+| `dashboard/app.py` | Streamlit entry point; registers the dashboard and separate admin page. |
+| `dashboard/home.py` | Company search, performance and risk views, comparisons, charts and prediction controls. |
+| `dashboard/analysis.py` | Historical performance, price variation and peak-drop calculations. |
+| `dashboard/forecast.py` | Prediction features, models, chronological testing and acceptance checks. |
+| `dashboard/market.py` | Provider requests, price and profile caches, saved-price reuse and forecast reuse. |
+| `dashboard/catalog.py` | Reads the starter company names and profiles from JSON. |
+| `dashboard/storage.py` | Optional database connection and shared-storage adapters. |
+| `dashboard/runtime.py` | Applies adapter versions and clears older caches once after an update. |
+| `dashboard/pages/admin.py` | Separate database administration page. |
+| `dashboard/database_admin.py` | Administrator authentication, storage overview and manual price cleanup. |
+| `etl/shared_store.py` | Managed database tables, price upserts, refresh coordination, forecasts and retention. |
+| `etl/cleanup.py` | Validates and deletes selected saved price rows for the admin controls. |
+| `etl/extract.py`, `etl/transform.py`, `etl/load.py` | Earlier ETL utilities retained for compatibility; the current dashboard uses the shared store instead of replace-table exports. |
+| `data/companies.json` | Starter company names and optional saved overview fields. |
+| `scripts/refresh_companies.py` | Explicit offline refresh of starter company profiles. |
+| `scripts/evaluate_models.py` | Bounded offline prediction study using exported price CSVs. |
+| `analysis/` | Dated model-study report and JSON results. |
+| `tests/` | Dashboard, market, forecast, storage, cleanup, runtime and study checks. |
+| `requirements.txt` | Pinned Python dependencies. |
+| `Dockerfile`, `docker-compose.yml` | Container setup and an optional local PostgreSQL service. |
+
+Start with `dashboard/app.py` when running the app. Follow `dashboard/home.py` for UI behavior and `etl/shared_store.py` for how saved data is managed.
+
+## Installation and local setup
+
+### Requirements
+
+Use Python **3.11 or 3.12**, Git, and an internet connection for market-data downloads. Python 3.12 was used for the project test run; the existing Docker image uses Python 3.11. A database is optional: you can explore stocks without Neon, but data in memory does not survive app restarts. No LLM API key is needed. Docker is only required for the container option below.
+
+### 1. Get the project
 
 ```bash
+git clone https://github.com/bhuwanbkt/stock-analysis-dashboard_cloud.git
+cd stock-analysis-dashboard_cloud
+```
+
+If Git is unavailable, download the repository ZIP from GitHub, extract it and open a terminal inside the extracted project folder.
+
+### 2. Create an environment and install packages
+
+On **macOS or Linux**:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+```
+
+On **Windows PowerShell**, use Python 3.12 and the environment's Python directly; activation is not required:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+### 3. Run the dashboard
+
+Run from the **project root**, where `requirements.txt` is located.
+
+On macOS or Linux, with the environment activated:
+
+```bash
 python -m streamlit run dashboard/app.py
 ```
 
-Use Python 3.11+ and `dashboard/app.py` as the Streamlit Community Cloud entry point.
+On Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run dashboard/app.py
+```
+
+Open `http://localhost:8501` (or the local URL printed in the terminal). Select a company to view its history. Comparisons and predictions run only when their buttons are clicked. Stop the app with **Ctrl+C**. To start it again later, return to the same folder and run the same command; there is no need to reinstall packages each time.
+
+### 4. Optional: enable Neon persistence and admin access
+
+Copy the PostgreSQL connection string from your Neon project's connection details. Keep its SSL settings, such as `sslmode=require`. The app reads top-level Streamlit secrets first, then environment variables. These examples use environment variables so credentials do not need to be saved in a repository file.
+
+On macOS or Linux, set these in the same terminal before starting Streamlit:
+
+```bash
+export DATABASE_URL='your Neon PostgreSQL connection URL'
+export DATABASE_ADMIN_TOKEN='your private administrator password of at least 24 characters'
+python -m streamlit run dashboard/app.py
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:DATABASE_URL = 'your Neon PostgreSQL connection URL'
+$env:DATABASE_ADMIN_TOKEN = 'your private administrator password of at least 24 characters'
+.\.venv\Scripts\python.exe -m streamlit run dashboard/app.py
+```
+
+Replace the placeholder values before running. `DATABASE_ADMIN_TOKEN` is optional unless you want manual cleanup. Generate it once, save it privately, and reuse it; it is separate from the Neon password. For example, Python can generate a random 64-character token:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+On Windows, run that command with `.\.venv\Scripts\python.exe` instead of `python`. Terminal environment settings last for that terminal session; set them again in a new terminal. A `.env` file is **not automatically loaded** by this app. If you choose local Streamlit secrets instead, create `.streamlit/secrets.toml` in the project root and exclude it from Git before adding credentials. The committed `.gitignore` currently does not explicitly exclude that file. Do not commit credentials or include them in container images.
+
+On a successful connection, the app creates its managed tables automatically. No separate migration command or daily download job is needed. Use **Open admin page** at the top of the sidebar for the storage overview and cleanup. See [Bounded shared storage](#bounded-shared-storage) and [Manual removal of old and new prices](#manual-removal-of-old-and-new-prices) for limits and deletion behavior.
+
+### Alternative: Docker with local PostgreSQL
+
+The repository includes a Dockerfile and Compose services for the app and PostgreSQL 15. The current app requires **`DATABASE_URL`**; the older `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASSWORD` entries in Compose do not configure its shared store on their own.
+
+For local development, create `docker-compose.override.yml` in the project root with:
+
+```yaml
+services:
+  stock-dashboard:
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/stocks
+```
+
+This matches the existing local database service's development credentials. The override filename is ignored by Git. For manual cleanup, also add a private `DATABASE_ADMIN_TOKEN` under that service's `environment`; keep it out of Git and any image build context. A secrets file, if present, takes precedence over these environment settings.
+
+```bash
+docker compose up --build -d
+docker compose logs -f stock-dashboard
+```
+
+Open `http://localhost:8501`. Ctrl+C exits the log viewer while the containers keep running. To stop them:
+
+```bash
+docker compose down
+```
+
+The named `postgres_data` volume retains local records after a normal shutdown. The existing Compose setup exposes host ports 8501 and 5432, so those ports must be available. Its fixed database password is for local development; do not expose this setup publicly. Docker startup is documented from the existing configuration and has not been exercised in the hosted editing environment.
+
+### Streamlit Community Cloud setup
+
+1. Connect this GitHub repository and choose the `main` branch.
+2. Set the main file path to **`dashboard/app.py`** and use Python 3.11 or 3.12.
+3. Add optional top-level `DATABASE_URL` and `DATABASE_ADMIN_TOKEN` values under the app's **Settings → Secrets**, using the TOML examples below. Hosted secrets persist across sleep and restart.
+4. Deploy the app. Dependencies are installed from the root `requirements.txt`; Docker Compose is not used by Community Cloud.
+
+No database settings are needed for the memory-only dashboard. See [Resource controls and hosting](#resource-controls-and-hosting) for sleep behavior and resource limits.
+
+### Common setup problems
+
+| Problem | What to check |
+| --- | --- |
+| Package installation fails | Check the Python version, use a fresh virtual environment, upgrade pip and install from the pinned requirements. |
+| `streamlit` or another module is missing | Run with the same environment's Python used to install the packages. |
+| No prices appear | Check internet access and the provider warning; a rate limit or outage can prevent downloads. Try a known starter company. |
+| Prices are shown but not saved | Check `DATABASE_URL`, database permissions and any database warning. API/memory fallback can still display prices. |
+| Admin controls stay locked | Configure both database URL and an administrator token of at least 24 characters, then restart the local app. |
+| Compose cannot bind a port | Stop the conflicting local service or change the host-side port mapping in a private override. |
+
+For tests, see [Validation](#validation). For the offline prediction study, see [Small offline model study](#small-offline-model-study).
 
 ## What happens when someone opens the app
 
