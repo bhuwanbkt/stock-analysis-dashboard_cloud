@@ -5,7 +5,7 @@ import json
 import uuid
 import pandas as pd
 from sqlalchemy import (MetaData, Table, Column, String, Date, DateTime, Float,
-                        BigInteger, Integer, Text, select, delete, update, func)
+                        BigInteger, Integer, Text, select, delete, update, func, or_)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -140,7 +140,9 @@ class SharedStore:
             if records:
                 stmt = self.insert(prices).values(records)
                 conn.execute(stmt.on_conflict_do_update(index_elements=['symbol','Date'],
-                    set_={name:getattr(stmt.excluded,name) for name in ['Open','High','Low','Close','Volume']}))
+                    set_={name:getattr(stmt.excluded,name) for name in ['Open','High','Low','Close','Volume']},
+                    where=or_(*[prices.c[name].is_distinct_from(stmt.excluded[name])
+                                for name in ['Open','High','Low','Close','Volume']])))
             conn.execute(delete(prices).where(prices.c.symbol == symbol, prices.c.Date.not_in([r['Date'] for r in records])))
             conn.execute(update(refresh).where(refresh.c.symbol == symbol).values(
                 fetched_at=now, downloaded_rows=downloaded_rows, lease_until=None, lease_token=None,retry_after=None))
@@ -178,6 +180,28 @@ class SharedStore:
             conn.execute(update(companies).where(companies.c.symbol == symbol).values(**values))
             return True
 
+    def read_forecast(self, symbol, as_of, horizon, version, fingerprint):
+        with self.transaction() as conn:
+            payload = conn.scalar(select(forecasts.c.result).where(
+                forecasts.c.symbol == symbol, forecasts.c.as_of == pd.Timestamp(as_of).date(),
+                forecasts.c.horizon == horizon, forecasts.c.model_version == version))
+        if not payload: return None
+        result = json.loads(payload)
+        return result if result.get('data_fingerprint') == fingerprint else None
+
+    def storage_summary(self):
+        with self.transaction() as conn:
+            counts = {name: conn.scalar(select(func.count()).select_from(table))
+                      for name, table in [('companies', companies), ('prices', prices), ('forecasts', forecasts)]}
+            last = conn.scalar(select(maintenance.c.last_run).where(maintenance.c.key == 'weekly_cleanup'))
+            latest = conn.scalar(select(func.max(refresh.c.fetched_at)))
+            size = None
+            if conn.dialect.name == 'postgresql':
+                from sqlalchemy import text
+                size = conn.scalar(text('SELECT pg_database_size(current_database())'))
+        return {**counts, 'last_cleanup': utc(last), 'last_refresh': utc(latest),
+                'database_bytes': size, 'company_limit': MAX_COMPANIES, 'forecast_limit': MAX_FORECASTS}
+
     def record_forecast(self, symbol, result, version, now=None):
         if not result.get('available'): return False
         now = now or datetime.now(timezone.utc)
@@ -196,12 +220,16 @@ class SharedStore:
                             forecasts.c.realized_return.is_(None))).mappings().all()
         daily = frame.set_index('Date')['Close'].sort_index()
         for row in rows:
+            # New forecasts use the same conservative completion rule at inference and evaluation.
+            eligible = daily
+            if json.loads(row['result']).get('completion_policy') == '36h-utc-v1':
+                eligible = daily.loc[daily.index + pd.Timedelta(hours=36) <= pd.Timestamp(now).tz_localize(None)]
             origin = pd.Timestamp(row['as_of'])
-            if origin not in daily.index: continue
-            later = daily.loc[daily.index > origin]
+            if origin not in eligible.index: continue
+            later = eligible.loc[eligible.index > origin]
             if len(later) < row['horizon']: continue
             # Both endpoints use the SAME current adjustment basis; do not divide by an old adjusted-price snapshot.
-            realized = float(later.iloc[row['horizon']-1] / daily.loc[origin] - 1)
+            realized = float(later.iloc[row['horizon']-1] / eligible.loc[origin] - 1)
             conn.execute(update(forecasts).where(forecasts.c.symbol == symbol,forecasts.c.as_of == row['as_of'],
                 forecasts.c.horizon == row['horizon'],forecasts.c.model_version == row['model_version']).values(
                     realized_return=realized,evaluated_at=now))

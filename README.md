@@ -118,14 +118,14 @@ Forecasting predicts an endpoint return over 1–30 observed trading-session bar
 
 All candidates use the same folds and mean absolute return error. Horizon-sized purge gaps prevent training labels from reaching validation or test origins. The best development method is tested on a separate latest holdout; test error is reported in percentage points. It is then refit using known historical labels to estimate the endpoint from the latest unlabelled row. At least 250 usable labelled rows are required. Only the selected method is refit, and the baseline requires no learned-model fit.
 
-When persistence is available, a forecast is recorded once per `(symbol, as_of, horizon, model_version)`. Later normal price refreshes evaluate pending forecasts once enough future bars exist. Both observed-return endpoints use the same current adjusted-price basis. **Load saved forecast history** shows up to 30 recent predictions, observed returns, and pending/evaluated status. It does not download extra market data. Missing provider bars can affect the mapping from bar count to actual exchange sessions; forecasts based on unfinished bars remain experimental.
+When persistence is available, a forecast is recorded once per `(symbol, as_of, horizon, model_version)`. Later normal price refreshes evaluate pending forecasts once enough future bars exist. Both observed-return endpoints use the same current adjusted-price basis. **Load saved forecast history** shows up to 30 recent predictions, observed returns, and pending/evaluated status. It does not download extra market data. Missing provider bars can affect the mapping from bar count to actual exchange sessions; forecasts use the conservative completed-bar rule below.
 
 Historical validation and later observations help assess the method; neither guarantees improved future accuracy. Overlapping multi-session targets are correlated. No confidence probability, synthetic daily price path, trading profit, or investment recommendation is claimed. Currency comes from the optional profile; otherwise values are labelled quote units.
 
 ## Resource controls and hosting
 
 - History: four-hour memory cache, 48 entries; two years by default, five years only when selected.
-- Profiles and company searches: one-day memory caches, 48 entries each. Saved dropdown catalog: five-minute cache.
+- Profiles and company searches: one-day memory caches, 48 entries each. Saved dropdown catalog: one-hour cache, cleared when a company profile is explicitly remembered.
 - Forecasts: one-day memory cache, 24 entries; button-driven, single CPU worker, one model computation at a time per process.
 - Provider calls: one nonblocking network slot per process, 12-second timeout. Competing cold requests receive a retry message or saved-price fallback.
 - Session cooldowns: 20 seconds for search, ticker lookup, comparisons, price retries, and forecasts; 60 seconds for overview lookup. These are basic resource controls, not complete abuse prevention.
@@ -145,3 +145,13 @@ python -m pytest -q
 Tests require neither production credentials nor live provider downloads. SQLite integration tests cover storage transactions, unique-row updates, refresh leases and token fencing, capacity reservations, profile preservation, forecast deduplication and evaluation, and weekly retention with rollback. Mocked market tests cover fresh database reuse, stale fallback, write failures, and five-year memory-only downloads. Streamlit tests cover company URL restoration, button-driven search/comparison/forecasting, and protected manual cleanup. Forecast tests check chronological purge boundaries, latest-row inference, and baseline fallback.
 
 SQLite does not prove PostgreSQL row-lock behavior under real concurrent connections; the production SQL uses PostgreSQL row/advisory locks and conflict-aware inserts. A production load test and provider availability remain separate concerns.
+
+## Efficient storage and forecast reuse
+
+Price refreshes still download the full two-year window so historical corporate-action revisions are detected. PostgreSQL inserts missing rows and updates existing OHLCV rows only when a value differs. Unchanged price rows are left untouched; refresh timestamps still advance. Storage remains limited to 50 companies, 600 price rows per company and 5,000 forecast records. No background downloads run while Streamlit sleeps.
+
+Forecast input and evaluation use daily bars at least **36 hours after their session-date midnight in UTC**. The app does not yet store exchange calendars or closing times, so this conservative buffer can exclude a completed recent bar and lag the chart. For example, a Friday-dated bar becomes eligible Saturday at 12:00 UTC. The completion filter is evaluated outside the memory cache, allowing eligibility to change without a new price download. This is a safety buffer, not a provider guarantee that bars cannot be revised.
+
+Before training, the app looks for a saved forecast matching the company, eligible final date, horizon, model version, completion policy and fingerprint of all model-input dates, closes and volumes. A matching forecast is reused even after the app restarts. Revised input or a changed version creates a separate record within the existing forecast limit. The UI shows the forecast data date and whether the result was calculated or reused. Existing earlier forecasts remain readable. No schema migration or new package is required.
+
+After unlocking the separate admin page, click **Refresh storage overview** to see saved company, price and forecast counts, limits, the last automatic cleanup and last price refresh. PostgreSQL also reports the whole database's size, including unrelated tables and indexes; this is not the Neon billing or compute quota. The overview is queried only on that button, requests no market data and starts no cleanup. Locking the page or deleting rows clears the overview snapshot. Deletion does not necessarily shrink physical files immediately; PostgreSQL reclaims old row versions through vacuuming.

@@ -144,3 +144,25 @@ def test_direct_admin_page_is_password_protected_and_does_not_load_prices():
         assert any(row.value=='Database administration' for row in at.title)
         assert element(at.text_input,'Database administrator password').proto.type==1
         history.assert_not_called();listing.assert_not_called();delete.assert_not_called()
+
+
+def test_admin_storage_overview_is_explicit_and_does_not_download():
+    app=Path(__file__).resolve().parents[1]/'dashboard'/'app.py'
+    settings={'DATABASE_URL':'postgresql://placeholder','DATABASE_ADMIN_TOKEN':'test-only-password-over-24-characters'}
+    summary={'companies':2,'prices':1000,'forecasts':3,'company_limit':50,'forecast_limit':5000,
+             'database_bytes':1048576,'last_cleanup':None,'last_refresh':None}
+    with patch('dashboard.database_admin.setting',side_effect=lambda key:settings.get(key,'')), \
+         patch('dashboard.database_admin.authorized',return_value=True), \
+         patch('dashboard.storage._store') as store, \
+         patch('dashboard.market.get_history') as history, \
+         patch('etl.cleanup.list_price_tables') as listing:
+        store.return_value.storage_summary.return_value=summary
+        at=AppTest.from_file(str(app)).switch_page('pages/admin.py').run(timeout=30)
+        assert not at.exception
+        store.assert_not_called()
+        element(at.button,'Refresh storage overview').click().run()
+        assert not at.exception
+        assert any(row.label=='Saved companies' and row.value=='2 / 50' for row in at.metric)
+        assert any('1.00 MiB' in row.value for row in at.caption)
+        store.return_value.storage_summary.assert_called_once()
+        history.assert_not_called();listing.assert_not_called()

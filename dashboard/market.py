@@ -1,6 +1,7 @@
 """Bounded memory caches backed by optional shared Postgres storage."""
 from datetime import datetime, timezone
 import re
+import hashlib
 import threading
 import numpy as np
 import pandas as pd
@@ -130,24 +131,62 @@ def get_history(symbol, period='2y'):
         slot.release()
 
 
+def completed_forecast_prices(prices, now=None):
+    # No exchange calendar is stored yet. A conservative 36-hour UTC buffer avoids
+    # treating a recent session-date bar as a final close across different exchanges.
+    now = pd.Timestamp(now or datetime.now(timezone.utc))
+    now = now.tz_localize('UTC') if now.tzinfo is None else now.tz_convert('UTC')
+    dates = pd.to_datetime(prices.Date).dt.normalize()
+    return prices.loc[dates + pd.Timedelta(hours=36) <= now.tz_localize(None)].copy()
+
+
+def get_forecast(symbol, prices, horizon, model_version='three-model-v3'):
+    # Time eligibility must be evaluated outside the cached function: a bar can
+    # become eligible while the downloaded price frame itself remains unchanged.
+    eligible = completed_forecast_prices(prices)
+    if eligible.empty:
+        return {'available': False, 'reason': 'No daily bars have passed the forecast completion buffer yet.'}
+    cutoff = eligible.Date.iloc[-1] - pd.DateOffset(years=2)
+    return _get_forecast(symbol, eligible.loc[eligible.Date >= cutoff].copy(), horizon, model_version)
+
+
 @st.cache_data(ttl=86400, max_entries=24, show_spinner=False)
-def get_forecast(symbol, prices, horizon, model_version='three-model-shared-v2'):
+def _get_forecast(symbol, prices, horizon, model_version):
     from dashboard.forecast import forecast
+    symbol = normalize_symbol(symbol)
+    if not isinstance(horizon, int) or not 1 <= horizon <= 30:
+        raise ValueError('Horizon must be 1–30 trading sessions.')
+    canonical = prices[['Date', 'Close', 'Volume']].copy().sort_values('Date').reset_index(drop=True)
+    canonical['Date'] = pd.to_datetime(canonical.Date).dt.strftime('%Y-%m-%d')
+    fingerprint = hashlib.sha256(canonical.to_csv(index=False, float_format='%.17g').encode()).hexdigest()
+    # Fits the existing 40-character column; no destructive migration is needed.
+    version = hashlib.sha256((model_version + ':36h-utc-v1:' + fingerprint).encode()).hexdigest()[:40]
+    repo = get_store()
+    if repo:
+        try:
+            saved = repo.read_forecast(symbol, prices.Date.iloc[-1], horizon, version, fingerprint)
+            if isinstance(saved, dict) and saved.get('available'):
+                return {**saved, 'tracking_saved': True, 'calculation_source': 'Saved forecast'}
+        except Exception:
+            pass
     slot = model_slot()
     if not slot.acquire(blocking=False):
         raise ForecastBusy('Another forecast is running. Please retry in a moment.')
     try:
-        # Limit model input even when the chart downloads five years.
-        cutoff = prices.Date.iloc[-1] - pd.DateOffset(years=2)
-        result = forecast(prices.loc[prices.Date >= cutoff].copy(), horizon)
-        repo = get_store()
+        result = dict(forecast(prices, horizon))
+        result.update(data_fingerprint=fingerprint, completion_policy='36h-utc-v1',
+                      model_version=model_version, calculation_source='Calculated now')
         result['tracking_saved'] = False
         if repo and result.get('available'):
-            try: result['tracking_saved'] = repo.record_forecast(symbol, result, model_version)
+            try: result['tracking_saved'] = repo.record_forecast(symbol, result, version)
             except Exception: pass
         return result
     finally:
         slot.release()
+
+
+# Keep explicit cache clearing compatible with the existing callers and tests.
+get_forecast.clear = _get_forecast.clear
 
 
 @st.cache_data(ttl=86400, max_entries=48, show_spinner=False)
