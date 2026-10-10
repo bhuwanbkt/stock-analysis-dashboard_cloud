@@ -34,12 +34,16 @@ def test_browsing_custom_ticker_and_button_only_forecast():
         element(at.selectbox,'Search a company').set_value('MSFT').run()
         assert not at.exception
         assert any('MSFT' in h.value for h in at.subheader)
-        element(at.radio,'View').set_value('Forecast quality').run()
+        element(at.radio,'View').set_value('Price estimate').run()
         model.assert_not_called()
-        element(at.button,'Run forecast').click().run(timeout=30)
+        element(at.button,'Calculate price estimate').click().run(timeout=30)
         assert not at.exception
         model.assert_called_once()
-        assert any('fallback' in item.value for item in at.info)
+        assert any('does not mean the stock will stay' in item.value for item in at.info)
+        assert any('not how accurate' in item.value for item in at.markdown)
+        estimate=next(item for item in at.metric if item.label=='Estimated price after 7 trading days')
+        assert estimate.delta=='+0.00% change from starting price'
+        assert any('Starting price date: 2025-12-12' in item.value for item in at.caption)
         element(at.text_input,'Enter an additional ticker').set_value('cost')
         element(at.button,'Look up ticker').click().run()
         assert not at.exception

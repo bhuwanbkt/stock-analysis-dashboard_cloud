@@ -170,7 +170,7 @@ def main():
     st.caption('Daily prices are adjusted for corporate actions, may be delayed, and can include an unfinished session. Returns are price returns, not a trading-strategy result.')
 
     # Render only the selected view. Streamlit tabs eagerly execute every tab body.
-    view = st.radio('View', ['Overview', 'Indicators', 'Compare', 'Forecast quality'], horizontal=True, label_visibility='collapsed')
+    view = st.radio('View', ['Overview', 'Indicators', 'Compare', 'Price estimate'], horizontal=True, label_visibility='collapsed')
     if view == 'Overview':
         col1,col2 = st.columns([1,2])
         kind = col1.radio('Chart style', ['Line','Candlestick'], horizontal=True)
@@ -240,13 +240,16 @@ def main():
         else:
             st.info('Choose another company and click Compare stocks. No comparison API call runs before the button is clicked.')
     else:
-        st.subheader('Experimental forecast')
-        st.caption('Forecasts use bars at least 36 hours past their UTC session-date midnight. This conservative buffer can lag the latest chart bar; no exchange calendar is assumed.')
-        horizon=st.selectbox('Trading sessions ahead',[1,5,7,10,20,30],index=2)
-        st.caption('Ridge regression, Random Forest, and gradient boosting compete with unchanged price in the same earlier chronological validation windows. The best validation method is tested on a separate latest window.')
-        if st.button('Run forecast') and cooldown('forecast',20):
+        st.subheader('Estimate a future price')
+        st.caption('An experimental estimate based on past prices. The actual future price can be different.')
+        horizon=st.selectbox('How many market trading days ahead?', [1,5,7,10,20,30], index=2,
+                            format_func=lambda n: f"{n} trading day{'s' if n != 1 else ''}",
+                            help='Count days when this stock market trades. Weekends and market holidays do not count. The count starts from the price date used by the estimate.')
+        st.caption('5 trading days is usually about one calendar week. For a typical weekday market, five days after Monday is the following Monday, if there are no holidays.')
+        st.caption('We use older daily prices to avoid a trading day that is still in progress. The starting date may be earlier than the latest date on the chart.')
+        if st.button('Calculate price estimate') and cooldown('forecast',20):
             try:
-                with st.spinner('Checking historical forecast quality...'):
+                with st.spinner('Checking how well the methods worked on past prices...'):
                     result=get_forecast(symbol,packet['prices'],horizon)
                 st.session_state.forecast_result={'key':(symbol,horizon,str(latest.Date),packet['fetched_at']),'result':result}
             except (ValueError,MarketUnavailable,ForecastBusy) as exc:
@@ -255,35 +258,53 @@ def main():
         if saved and saved['key']==(symbol,horizon,str(latest.Date),packet['fetched_at']):
             result=saved['result']
             if result['available']:
-                st.metric('Estimated endpoint (quote units)',f"{result['predicted_price']:,.2f}",f"{result['predicted_return']:+.2%}")
-                st.caption('Forecast saved for later evaluation.' if result.get('tracking_saved') else 'Forecast shown in memory; no tracking record was saved.')
-                st.caption(f"Calculation source: {result.get('calculation_source', 'Calculated now')} · Forecast data ends: {result['as_of'][:10]}")
-                st.write(f"Selected method: **{result['model']}**")
-                if result.get('validation_scores'):
-                    scores = pd.DataFrame(result['validation_scores']).rename(columns={
-                        'method': 'Method', 'mae_pct': 'Validation error (percentage points)', 'selected': 'Selected'})
-                    st.dataframe(scores, hide_index=True)
-                    st.caption('Lower validation error is better. This table uses earlier development data; it is not the separate test result or a confidence score.')
-                a,b=st.columns(2)
-                a.metric('Selected method: average return error',f"{result['mae_pct']:.2f} percentage points")
-                b.metric('Unchanged-price baseline error',f"{result['baseline_mae_pct']:.2f} percentage points")
-                if result['model']=='Unchanged-price baseline':
-                    st.info('None of the learned methods beat unchanged price during development validation. An unchanged estimate is a fallback, not evidence the stock will stay flat.')
-                elif not result['beats_baseline_on_holdout']:
-                    st.warning('The selected model did not beat unchanged price on the separate latest test window.')
-                else:
-                    st.success('The selected model had lower average error on this latest test window. Future performance is unknown.')
-                st.caption(f"{result['test_rows']} test origins · {result['training_rows']} labelled rows · Based on bar {result['as_of'][:10]}")
-                if 'input_rows' in result:
-                    st.caption(f"Model input: {result['input_rows']} daily rows from {result['history_start'][:10]}. Features use past prices and volume; labels require a known price {horizon} trading sessions later. Only the selected method is refit for the endpoint estimate.")
+                unchanged=result['model']=='Unchanged-price baseline'
+                if unchanged:
+                    st.info('Why no price change? In our earlier tests, the prediction models made larger or equal average mistakes than simply keeping the starting price. We therefore show the starting price as a simple comparison estimate. This does not mean the stock will stay at this price.')
+                label=f'Estimated price after {horizon} trading days'
+                if currency: label+=f' ({currency})'
+                st.metric(label, f"{result['predicted_price']:,.2f}",
+                          f"{result['predicted_return']:+.2%} change from starting price", delta_color='off')
+                starting_price=result['predicted_price']/(1+result['predicted_return'])
+                st.caption(f"Starting price: {starting_price:,.2f} · Starting price date: {result['as_of'][:10]}")
+                if not currency: st.caption('The price uses the same currency or pricing units as the chart; currency has not been confirmed.')
+                st.write('**What does the percentage mean?** It is the estimated price change, not how accurate the prediction is. +2% means an estimated rise; −2% means an estimated fall; 0% means an unchanged estimate. A displayed 0.00% can also be a very small change rounded to two decimal places.')
+                st.caption('Using a previously saved estimate for the same data.' if result.get('calculation_source')=='Saved forecast' else 'Calculated using the historical prices available to the app.')
+                st.caption('Saved so we can compare it with the actual price later.' if result.get('tracking_saved') else 'This estimate has not been saved for a later comparison.')
+                if not unchanged:
+                    if not result['beats_baseline_on_holdout']:
+                        st.warning('On the separate recent test, this method made larger or equal average mistakes than keeping the starting price. Treat this estimate with caution.')
+                    else:
+                        st.write('On the separate recent test, this method made smaller average mistakes than keeping the starting price. That does not guarantee future accuracy.')
+                with st.expander('How did we check this estimate?'):
+                    st.write('We tried three prediction methods on earlier historical prices. We compared them with a simple method that predicts no price change. We then checked the chosen method on a separate, more recent period.')
+                    st.write(f"Chosen method: **{'Keep the starting price' if unchanged else result['model']}**")
+                    if result.get('validation_scores'):
+                        scores = pd.DataFrame(result['validation_scores']).rename(columns={
+                            'method': 'Method', 'mae_pct': 'Average mistake in earlier tests', 'selected': 'Chosen'})
+                        scores['Method']=scores['Method'].replace({'Unchanged-price baseline':'Keep the starting price'})
+                        st.dataframe(scores, hide_index=True)
+                    a,b=st.columns(2)
+                    a.metric('Chosen method: recent test error',f"{result['mae_pct']:.2f} percentage points")
+                    b.metric('No-change method: recent test error',f"{result['baseline_mae_pct']:.2f} percentage points")
+                    st.caption('Smaller errors are better. For example, predicting a 2% rise when the actual rise was 5% is an error of 3 percentage points. These error numbers are not prediction accuracy percentages.')
+                    st.caption(f"Checked on {result['test_rows']} historical starting dates · Learned from {result['training_rows']} examples with known later prices.")
+                    if 'input_rows' in result:
+                        st.caption(f"Used {result['input_rows']} daily prices starting {result['history_start'][:10]}. The methods use past price changes and trading volume. Longer forecasts can share some of the same future days, so their test results are not independent.")
+                    st.caption('A daily price must be at least 36 hours past its date at midnight UTC before we use it for forecasts. This extra delay is a conservative rule because exact exchange closing calendars are not stored.')
             else:
                 st.info(result['reason'])
-        if st.button('Load saved forecast history'):
+        if st.button('View past estimates'):
             rows = forecast_history(symbol)
-            if rows: st.dataframe(pd.DataFrame(rows), hide_index=True)
-            else: st.info('No saved forecast records are available for this company.')
-        st.caption('Saved forecasts are evaluated when a later price refresh supplies enough observed bars. This does not trigger an extra daily download.')
-        st.caption('Trading sessions exclude weekends and exchange holidays. Overlapping targets are correlated. Historical error is not a confidence probability. No daily path or guaranteed future return is implied.')
+            if rows:
+                history=pd.DataFrame(rows).rename(columns={'Forecast date':'Starting price date',
+                    'Sessions ahead':'Trading days ahead', 'Predicted return (%)':'Estimated change (%)',
+                    'Observed return (%)':'Actual change (%)', 'Status':'Result'})
+                history['Method']=history['Method'].replace({'Unchanged-price baseline':'Keep the starting price'})
+                history['Result']=history['Result'].replace({'Pending':'Waiting for later prices','Evaluated':'Compared with later prices'})
+                st.dataframe(history, hide_index=True)
+            else: st.info('No saved estimates are available for this company.')
+        st.caption('Saved estimates are compared with actual prices when enough later trading days are available and someone next refreshes this stock. The app does no work while asleep.')
     st.divider()
     st.caption('Educational analysis · No investment recommendations · No LLM calls · Optional shared Postgres · Sleeping apps run no background downloads or cleanup.')
 
