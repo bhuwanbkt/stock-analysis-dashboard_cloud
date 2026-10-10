@@ -133,7 +133,7 @@ class TestLoad:
         # Should not attempt to create database
 
     @patch('etl.load.create_engine')
-    def test_create_database_new(self, mock_create_engine):
+    def test_connection_check_does_not_create_database(self, mock_create_engine):
         """Test database creation when it doesn't exist"""
         mock_conn = MagicMock()
         mock_conn.execute.return_value.fetchone.return_value = None  # Database doesn't exist
@@ -143,8 +143,8 @@ class TestLoad:
 
         create_database()
 
-        # Should attempt to create database
-        assert mock_conn.execute.call_count == 2  # Check + Create
+        # Cloud loader checks a connection; it does not create a Neon database.
+        assert mock_conn.execute.call_count == 1
 
     @patch('etl.load.create_engine')
     @patch('etl.load.create_database')
@@ -168,7 +168,7 @@ class TestLoad:
             load_to_postgres(df, 'test_table')
 
             # Verify database operations
-            mock_create_db.assert_called_once()
+            mock_create_db.assert_not_called()
             mock_create_engine.assert_called_once()
             mock_to_sql.assert_called_once_with('test_table', mock_engine, if_exists='replace', index=False)
 

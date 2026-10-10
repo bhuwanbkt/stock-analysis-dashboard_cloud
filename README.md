@@ -1,217 +1,66 @@
-# Stock ETL Dashboard
+# Stock Explorer
 
-A comprehensive stock analysis dashboard that extracts, transforms, and loads stock data with technical indicators, machine learning predictions, and interactive visualizations.
+A lightweight Streamlit stock-analysis app for company search, daily historical prices, indicators, percentage-return comparisons, and optional experimental forecasting. It runs in one CPU process with no LLM calls, required database, new dependency, or separate model server.
 
-## Features
-
-- **Real-time Stock Data**: Fetches live stock data using Yahoo Finance API
-- **Technical Indicators**: Calculates RSI, MACD, Moving Averages, Bollinger Bands, and more
-- **Machine Learning Predictions**: Uses Random Forest to predict future stock prices
-- **Interactive Dashboard**: Built with Streamlit for real-time visualization
-- **PostgreSQL Integration**: Stores processed data in a relational database
-- **Comprehensive Analysis**: Includes candlestick charts, volume analysis, and trading signals
-
-## Project Structure
-```
-stock_etl_dashboard/
-├── .venv/ # Python virtual environment
-├── .idea/ # PyCharm IDE configuration
-├── dashboard/
-│   └── app.py # Streamlit dashboard application
-├── etl/
-│   ├── __init__.py # Package initialization
-│   ├── extract.py # Data extraction from Yahoo Finance
-│   ├── transform.py # Technical indicator calculations
-│   └── load.py # Database loading functionality
-├── tests/ # Test files
-├── .gitignore # Git ignore rules
-├── requirements.txt # Python dependencies
-├── Dockerfile # Containerization configuration
-├── docker-compose.yml # Multi-container setup
-└── README.md # Project documentation
-```
-
-## Installation
-
-### Prerequisites
-
-- Python 3.8+
-- PostgreSQL
-- pip
-
-### Setup
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd stock-analysis-dashboard_cloud
-```
-
-2. Create a virtual environment:
-```bash
-python -m venv .venv
-source .venv/bin/activate  # On macOS/Linux
-.venv\Scripts\activate   # On Windows
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Set up PostgreSQL database:
-```bash
-# Ensure PostgreSQL is running
-brew services start postgresql  # On macOS with Homebrew
-sudo service postgresql start   # On Linux
-```
-
-5. Configure database credentials in `etl/load.py` if needed:
-```python
-DB_NAME = "stocks"
-DB_USER = "bhuwanbokati"  # Change to your PostgreSQL username
-DB_HOST = "localhost"
-DB_PORT = 5432
-```
-
-## Usage
-
-### Running the Dashboard
-```bash
-streamlit run dashboard/app.py
-```
-The dashboard will open in your browser at http://localhost:8501.
-
-### ETL Process
-The application follows an ETL (Extract, Transform, Load) pattern:
-
-- **Extract**: Fetches stock data from Yahoo Finance API  
-- **Transform**: Calculates technical indicators and prepares data for analysis  
-- **Load**: Stores processed data in PostgreSQL database  
-
-## Available Technical Indicators
-- Moving Averages (10, 20, 50, 200 days)
-- Exponential Moving Averages (12, 26 days)
-- MACD (Moving Average Convergence Divergence)
-- RSI (Relative Strength Index)
-- Bollinger Bands
-- Stochastic Oscillator
-- Average True Range (ATR)
-- On-Balance Volume (OBV)
-- Price Rate of Change (ROC)
-- Volatility measurements
-
-## Machine Learning Features
-The application includes a Random Forest Regressor for stock price prediction:
-
-- Predicts prices for 1-30 days ahead
-- Provides confidence scores for predictions
-- Generates trading signals based on technical indicators
-- Includes confidence intervals for predictions
-
-## Database Schema
-The application stores data in PostgreSQL with the following structure:
-
-- **Table name**: Matches the stock ticker (e.g., `aapl` for Apple)  
-- **Columns**: Date, Open, High, Low, Close, Volume, plus all technical indicators  
-- Automatic database creation if not exists  
-
-## Configuration
-
-### Time Period Options
-The dashboard supports multiple time periods:
-
-- 1 Month
-- 3 Months
-- 6 Months
-- 1 Year
-- 2 Years
-- 5 Years
-
-### Supported Stocks
-The application includes predefined lists of popular stocks:
-
-- Top 10 stocks (AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA, NFLX, INTC, AMD)  
-- Additional stocks (PLTR, UBER, JPM, V, DIS, PYPL, GS, BA, XOM, JNJ)  
-- Custom stock search functionality  
-
-## Code Overview
-
-### ETL Modules
-**extract.py**  
-Handles data extraction from Yahoo Finance API with proper error handling.
-
-**transform.py**  
-Calculates comprehensive technical indicators including RSI, MACD, Moving Averages, Bollinger Bands, and more.
-
-**load.py**  
-Manages PostgreSQL database operations including automatic database creation and data loading.
-
-### Dashboard Application
-The main dashboard application (`app.py`) built with Streamlit provides:
-
-- Interactive stock selection and search
-- Real-time price charts with technical indicators
-- Machine learning predictions
-- Trading signals based on technical analysis
-- Database integration for data persistence
-
-## Docker Support
-The project includes Docker configuration for containerized deployment:
+## Run and deployment
 
 ```bash
-# Build and run with Docker Compose
-docker-compose up --build
-
-# Or build individually
-docker build -t stock-dashboard .
+python -m pip install -r requirements.txt
+python -m streamlit run dashboard/app.py
 ```
 
-## Dependencies
-Key Python dependencies include:
+Use Python 3.11+ and `dashboard/app.py` as the Streamlit Community Cloud entry point.
 
-- streamlit
-- yfinance
-- plotly
-- pandas
-- numpy
-- scikit-learn
-- sqlalchemy
-- psycopg2-binary
+## Search and profiles
 
-See `requirements.txt` for complete list.
+The company dropdown searches 20 saved names and tickers in `data/companies.json` without a company API call. Under **Ticker not listed?**, the user explicitly submits a ticker. The app validates its format and requests daily history before adding it to a bounded session-only list of up to 10 additional symbols. A missing response is not reported as proof that a ticker is invalid; rate limits and provider outages can produce the same symptom.
 
-## Troubleshooting
+Company overviews are optional. **Load company overview** requests a profile only when clicked. Successful results are shared in a bounded one-day memory cache and at most 10 profile entries are retained per user session. API failures do not prevent price analysis. Browsing never writes profiles into GitHub or Neon. The starter JSON contains names, with overview fields pending until a successful offline API refresh is committed:
 
-### Common Issues
+```bash
+python scripts/refresh_companies.py --symbols AAPL MSFT
+```
 
-**Database Connection Errors:**
-- Ensure PostgreSQL is running
-- Verify database credentials in `etl/load.py`
+Review and commit successful updates. Failed or incomplete refreshes preserve previous saved profiles. Provider rate limits can prevent a refresh.
 
-**Missing Dependencies:**
-- Run `pip install -r requirements.txt`
+## Resource controls
 
-**Yahoo Finance API Issues:**
-- Check internet connection
-- Verify ticker symbols are valid
+- History is downloaded once per ticker for two years, reused for shorter chart periods and forecasts. Five years is fetched only when requested.
+- Prices use a shared four-hour memory cache capped at 48 entries. Profiles use a one-day cache capped at 48 entries; forecasts use a one-day cache capped at 24 entries.
+- Daily downloads request adjusted bars with a 12-second provider timeout. Invalid/nonfinite rows are removed and exchange session dates are normalized without shifting them to a different calendar date.
+- A shared nonblocking network semaphore limits concurrent provider calls. Other cold requests receive a short retry message; same-key requests benefit from Streamlit's shared cache.
+- Forecast computation is button-driven, uses one CPU worker, and has a shared nonblocking semaphore allowing one computation at a time per app process. Scikit-learn is imported lazily on the forecast path.
+- Additional ticker and comparison requests have 20-second per-session cooldowns; company-profile requests have a 60-second cooldown. These are convenience resource controls, not a comprehensive abuse-prevention system.
+- The view selector executes only the selected view, avoiding eager rendering of hidden Streamlit tabs and unnecessary chart generation. Comparisons request another ticker only after the user clicks Compare stocks.
+- Caches and custom symbols disappear on app restart. Successful cache entries are not refreshed in the background. Expired entries require a new download; this app does not promise stale-data availability during provider failures.
 
-**ML Prediction Failures:**
-- Select a longer time period for more historical data
+These changes reduce repeated work. They do not establish a tested capacity of 100 concurrent users or guarantee a free-provider quota. Distinct cold symbols, overlapping visits, model requests, and provider availability determine capacity. No paid service is introduced by the app.
 
-## Contributing
-1. Fork the repository  
-2. Create a feature branch  
-3. Make your changes  
-4. Add tests if applicable  
-5. Submit a pull request  
+## Analysis and forecast
 
-## License
-This project is licensed under the MIT License.
+The app shows period return, daily return standard deviation as volatility, and maximum drawdown from earlier highs within the selected period. Factual summaries are computed directly from prices. Comparisons align shared session dates and start both series at 0% on the first shared date. Charts can switch between line and candlestick; moving averages are optional. RSI/MACD/volume have a separate view.
 
-## Acknowledgments
-- Yahoo Finance for providing stock data API  
-- Streamlit for the interactive dashboard framework  
-- PostgreSQL for database management  
-- Scikit-learn for machine learning capabilities  
-- Plotly for interactive visualizations
+The model predicts an endpoint return over 1–30 trading sessions, using past returns, moving-average distance, volatility, and relative volume. An 80-tree regularized Random Forest competes against unchanged price in three expanding chronological development folds. A horizon-sized gap prevents training labels from reaching test origins. Method selection uses development folds; a separate latest holdout reports return MAE in percentage points. The selected method is refit on known labels and predicts from the latest unlabelled row. If unchanged price wins validation, no unnecessary extra model fit is run for the holdout.
+
+At least 250 usable labelled rows are required. Overlapping multi-session test targets are correlated. No future accuracy improvement, confidence probability, synthetic daily path, trading profit, or investment recommendation is claimed. Daily bars may include an unfinished session, be delayed, and be adjusted for corporate actions. Download time and latest bar date are shown separately. When profile currency is unavailable the UI explicitly labels quote units instead of assuming USD.
+
+## Database behavior
+
+Normal browsing makes no Neon connection or database write. CSV download is available locally in the user browser. Existing database rows are not automatically deleted, and no cleanup or retention migration is performed by this change.
+
+Optional administrator export is shown only with `ENABLE_DATABASE_EXPORT=1`; existing `DATABASE_URL`/Streamlit secrets configuration is handled by `etl/load.py`. Export explicitly replaces a deterministic table named `prices_<symbol hash>` and persists until removed or replaced. Old ticker-named export tables are not deleted. Enable export only when persistent storage is wanted.
+
+## Free-host sleep and best-effort wake-up
+
+Streamlit Community Cloud's documented policy puts apps to sleep after 12 hours without traffic. Any viewer can click the platform's **Yes, get this app back up!** button. Code inside a sleeping app cannot wake its stopped process.
+
+A separately configured ChatGPT scheduled browser check visits the public dashboard every eight hours and clicks that visible wake button if needed. It performs no forecast, comparison, profile request, database export, or repository modification, and reports verification failures. The scheduled check is best effort: browser access, task availability, startup delays, and hosting policy can affect it. It does not disable Streamlit hibernation or guarantee always-on hosting. The app uses no in-process keep-alive loop, empty commits, or HTTP-only claim of a verified app session.
+
+## Validation
+
+```bash
+python -m pip install pytest
+python -m pytest -q
+```
+
+Tests use mocked data and do not require a running database or live Yahoo requests. They cover chronological purge boundaries, latest-row inference, baseline fallback, local catalog search and refresh failures, safe symbol handling, price cleaning, shared mutation-safe caches, semaphore contention/release, calculation/alignment correctness, button-only API/model execution, custom ticker flow, and optional database behavior. Legacy database tests are aligned with the deployed loader's connection-check behavior rather than the old local database-creation implementation.

@@ -54,8 +54,7 @@ def forecast(df, horizon=7):
         baseline_errors.extend(np.abs(dev_y.iloc[valid]))
         fold_ranges.append({'train_last': int(dev_X.index[train[-1]]), 'valid_first': int(dev_X.index[valid[0]])})
     use_model = np.mean(model_errors) < np.mean(baseline_errors)
-    model = new_model().fit(dev_X, dev_y)
-    test_prediction = model.predict(test_X) if use_model else np.zeros(len(test_X))
+    test_prediction = new_model().fit(dev_X, dev_y).predict(test_X) if use_model else np.zeros(len(test_X))
     # Report honest out-of-sample errors even when the selected model loses here.
     error = np.asarray(test_y) - test_prediction
     mae = float(np.mean(np.abs(error)))
