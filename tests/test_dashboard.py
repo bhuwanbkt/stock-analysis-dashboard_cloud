@@ -89,3 +89,16 @@ def test_company_name_search_requires_buttons_and_opens_listing():
         assert element(at.selectbox,'Search a company').value=='SONY'
         assert any('Sony Group Corporation' in h.value for h in at.subheader)
         db.assert_not_called()
+
+
+def test_company_url_restores_selection_after_restart():
+    app=Path(__file__).resolve().parents[1]/'dashboard'/'app.py'
+    packet={'prices':prices(),'fetched_at':'2026-10-09T23:00:00+00:00','source':'Postgres','persisted':True}
+    with patch('dashboard.market.get_history',return_value=packet),patch('dashboard.storage.saved_catalog',return_value={}):
+        at=AppTest.from_file(str(app))
+        at.query_params['symbol']='SONY'
+        at.run(timeout=30)
+        assert not at.exception
+        assert element(at.selectbox,'Search a company').value=='SONY'
+        assert at.query_params['symbol']==['SONY']
+        assert any('Saved in shared Postgres' in item.value for item in at.caption)

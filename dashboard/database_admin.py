@@ -1,4 +1,4 @@
-"""Password-protected manual cleanup UI; browsing does not open the database."""
+"""Password-protected manual price cleanup controls."""
 import hashlib
 import hmac
 import os
@@ -69,7 +69,7 @@ def render_cleanup(catalog):
                 st.error('Could not list saved price tables. Check the database connection and permissions.')
         tables = st.session_state.get('database_price_tables')
         if tables is None:
-            st.info('Click Refresh saved price tables to inspect the database. No database connection runs before that action.')
+            st.info('Click Refresh saved price tables to inspect the database. This button queries the table list. Shared price storage operates separately.')
             return
         if not tables:
             st.info('No eligible stock-price tables were found. Unknown legacy table names can be added by the owner through DATABASE_LEGACY_STOCK_TABLES.')

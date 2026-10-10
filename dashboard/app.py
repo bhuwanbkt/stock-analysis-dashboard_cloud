@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 from pathlib import Path
@@ -13,7 +12,8 @@ from dashboard.catalog import load_catalog
 from dashboard.market import get_history, get_profile, get_forecast, get_company_matches, normalize_symbol, MarketUnavailable, ForecastBusy
 from dashboard.analysis import PERIOD_MONTHS, select_period, summarize, compare_returns
 from etl.transform import add_indicators
-from dashboard.database_admin import render_cleanup, authorized
+from dashboard.storage import saved_catalog, remember_company, forecast_history
+from dashboard.database_admin import render_cleanup
 
 CATALOG = load_catalog()
 st.markdown('''<style>
@@ -38,6 +38,8 @@ def select_company(candidate, record):
     if candidate not in CATALOG:
         custom[candidate] = record
         st.session_state.custom_companies = custom
+    remember_company(candidate, record)
+    st.query_params['symbol'] = candidate
     st.session_state.active_symbol = candidate
     st.session_state.pop('company_picker', None)
     st.rerun()
@@ -66,14 +68,25 @@ def main():
     st.caption('Understand price history, compare companies, and inspect experimental forecasts.')
     render_cleanup(CATALOG)
     custom = st.session_state.get('custom_companies', {})
-    companies = {**CATALOG, **custom}
+    saved = saved_catalog()
+    for key, value in saved.items():
+        if key in CATALOG and value.get('name') == key:
+            value['name'] = CATALOG[key]['name']
+    companies = {**CATALOG, **saved, **custom}
     if 'active_symbol' not in st.session_state:
-        st.session_state.active_symbol = 'AAPL'
+        try: initial = normalize_symbol(st.query_params.get('symbol', 'AAPL'))
+        except ValueError: initial = 'AAPL'
+        if initial not in companies:
+            companies[initial] = {'symbol': initial, 'name': initial, 'overview': None,
+                'currency': None, 'source': 'Shared link', 'updated_at': None}
+            st.session_state.custom_companies = {**custom, initial: companies[initial]}
+        st.session_state.active_symbol = initial
     symbols = list(companies)
     preferred = st.session_state.active_symbol
     symbol = st.selectbox('Search a company', symbols, index=symbols.index(preferred) if preferred in symbols else 0,
                           format_func=lambda value: f"{companies[value]['name']} ({value})", key='company_picker')
     st.session_state.active_symbol = symbol
+    st.query_params['symbol'] = symbol
     st.caption('Type a name or ticker inside the dropdown. The saved catalog needs no API request.')
     with st.expander('Company or ticker not listed?'):
         with st.form('company_lookup'):
@@ -118,7 +131,7 @@ def main():
                 st.warning(str(exc))
 
     period = st.sidebar.selectbox('Chart period', list(PERIOD_MONTHS), index=3)
-    st.sidebar.caption('Daily bars · Shared four-hour price cache · No database writes during browsing')
+    st.sidebar.caption('Daily bars · Four-hour memory cache · Shared saved prices refreshed on request after 24 hours')
     st.sidebar.caption('Free Streamlit apps may sleep after 12 hours without traffic. On the sleeping page, click “Yes, get this app back up!”')
     profile = st.session_state.get('profiles', {}).get(symbol, companies[symbol])
     currency = profile.get('currency')
@@ -146,7 +159,15 @@ def main():
     c4.metric('Largest period drawdown', f"{stats['max_drawdown_pct']:.2f}%")
     st.caption(f"Latest bar: {latest.Date:%Y-%m-%d} · Downloaded: {packet['fetched_at'][:16].replace('T',' ')} UTC · Yahoo Finance via yfinance")
     downloaded = packet.get('downloaded_rows', len(history))
-    st.caption(f"History: {history.Date.iloc[0]:%Y-%m-%d} to {latest.Date:%Y-%m-%d} · {downloaded:,} downloaded rows · {len(history):,} valid daily rows · {len(frame):,} rows in this chart. Browsing saves no rows to Postgres.")
+    st.caption(f"History: {history.Date.iloc[0]:%Y-%m-%d} to {latest.Date:%Y-%m-%d} · {downloaded:,} downloaded rows · {len(history):,} valid daily rows · {len(frame):,} rows in this chart.")
+    source = packet.get('source', 'API')
+    storage = 'Saved in shared Postgres' if packet.get('persisted') else 'Memory only'
+    st.caption(f'Data source: {source} · {storage} · Saved history limit: two years for up to 50 companies.')
+    if packet.get('stale'): st.warning(packet.get('notice', 'Showing older saved prices.'))
+    elif packet.get('notice'): st.caption(packet['notice'])
+    if packet.get('stale') and st.button('Retry price refresh') and cooldown('price_refresh'):
+        get_history.clear(symbol, '5y' if period == '5 Years' else '2y')
+        st.rerun()
     st.caption('Daily prices are adjusted for corporate actions, may be delayed, and can include an unfinished session. Returns are price returns, not a trading-strategy result.')
 
     # Render only the selected view. Streamlit tabs eagerly execute every tab body.
@@ -164,6 +185,7 @@ def main():
             distance = (latest.Close / ma50 - 1) * 100
             st.write(f"The latest close is {abs(distance):.2f}% {'above' if distance >= 0 else 'below'} the 50-session average. This describes past prices; it is not a buy or sell instruction.")
         with st.expander('Company overview'):
+            if profile.get('profile_stale'): st.info('Showing an older saved overview; the provider could not refresh it.')
             st.write(profile.get('overview') or 'No saved overview yet. Prices and analysis work independently of the profile API.')
             if profile.get('sector'):
                 st.caption(f"{profile['sector']} · {profile.get('industry') or 'Industry unavailable'}")
@@ -178,19 +200,11 @@ def main():
                 except MarketUnavailable as exc:
                     st.info(str(exc))
         with st.expander('Daily prices and export'):
-            st.caption('Prices stay in a shared memory cache for up to four hours, not in Postgres. A restart clears the cache. Any older database exports remain until explicitly replaced or removed; there is no automatic deletion job.')
+            st.caption('Saved two-year history survives a restart. Weekly cleanup runs on an active visit when due, removing prices outside two years and forecast records older than 90 days. Five-year charts remain in memory. Older export tables are only deleted through the administrator controls.')
             st.dataframe(frame[['Date','Open','High','Low','Close','Volume']].tail(30), hide_index=True)
             st.download_button('Download selected daily prices (CSV)',
                                frame[['Date','Open','High','Low','Close','Volume']].to_csv(index=False),
                                file_name=f'{symbol}_daily_prices.csv', mime='text/csv')
-            if os.getenv('ENABLE_DATABASE_EXPORT') == '1' and authorized() and st.button('Save prices to database'):
-                from etl.load import load_to_postgres
-                import hashlib
-                table_name = 'prices_' + hashlib.sha256(symbol.encode()).hexdigest()[:12]
-                if load_to_postgres(frame, table_name=table_name):
-                    st.success('Export saved. It persists until explicitly removed or replaced.')
-                else:
-                    st.warning('Database export failed.')
     elif view == 'Indicators':
         indicator = st.selectbox('Indicator', ['Volume','RSI','MACD'])
         fig=go.Figure()
@@ -242,6 +256,7 @@ def main():
             result=saved['result']
             if result['available']:
                 st.metric('Estimated endpoint (quote units)',f"{result['predicted_price']:,.2f}",f"{result['predicted_return']:+.2%}")
+                st.caption('Forecast saved for later evaluation.' if result.get('tracking_saved') else 'Forecast shown in memory; no tracking record was saved.')
                 st.write(f"Selected method: **{result['model']}**")
                 if result.get('validation_scores'):
                     scores = pd.DataFrame(result['validation_scores']).rename(columns={
@@ -262,9 +277,14 @@ def main():
                     st.caption(f"Model input: {result['input_rows']} daily rows from {result['history_start'][:10]}. Features use past prices and volume; labels require a known price {horizon} trading sessions later. Only the selected method is refit for the endpoint estimate.")
             else:
                 st.info(result['reason'])
+        if st.button('Load saved forecast history'):
+            rows = forecast_history(symbol)
+            if rows: st.dataframe(pd.DataFrame(rows), hide_index=True)
+            else: st.info('No saved forecast records are available for this company.')
+        st.caption('Saved forecasts are evaluated when a later price refresh supplies enough observed bars. This does not trigger an extra daily download.')
         st.caption('Trading sessions exclude weekends and exchange holidays. Overlapping targets are correlated. Historical error is not a confidence probability. No daily path or guaranteed future return is implied.')
     st.divider()
-    st.caption('Educational analysis · No investment recommendations · No LLM calls · No required database · Memory caches reset when the app restarts.')
+    st.caption('Educational analysis · No investment recommendations · No LLM calls · Optional shared Postgres · Sleeping apps run no background downloads or cleanup.')
 
 
 if __name__=='__main__':
