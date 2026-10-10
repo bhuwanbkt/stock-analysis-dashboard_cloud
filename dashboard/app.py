@@ -13,6 +13,7 @@ from dashboard.catalog import load_catalog
 from dashboard.market import get_history, get_profile, get_forecast, get_company_matches, normalize_symbol, MarketUnavailable, ForecastBusy
 from dashboard.analysis import PERIOD_MONTHS, select_period, summarize, compare_returns
 from etl.transform import add_indicators
+from dashboard.database_admin import render_cleanup, authorized
 
 CATALOG = load_catalog()
 st.markdown('''<style>
@@ -63,6 +64,7 @@ def price_chart(frame, kind='Line', averages=False):
 def main():
     st.title('Stock Explorer')
     st.caption('Understand price history, compare companies, and inspect experimental forecasts.')
+    render_cleanup(CATALOG)
     custom = st.session_state.get('custom_companies', {})
     companies = {**CATALOG, **custom}
     if 'active_symbol' not in st.session_state:
@@ -181,7 +183,7 @@ def main():
             st.download_button('Download selected daily prices (CSV)',
                                frame[['Date','Open','High','Low','Close','Volume']].to_csv(index=False),
                                file_name=f'{symbol}_daily_prices.csv', mime='text/csv')
-            if os.getenv('ENABLE_DATABASE_EXPORT') == '1' and st.button('Save prices to database'):
+            if os.getenv('ENABLE_DATABASE_EXPORT') == '1' and authorized() and st.button('Save prices to database'):
                 from etl.load import load_to_postgres
                 import hashlib
                 table_name = 'prices_' + hashlib.sha256(symbol.encode()).hexdigest()[:12]
