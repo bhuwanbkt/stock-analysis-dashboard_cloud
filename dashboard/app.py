@@ -13,7 +13,6 @@ from dashboard.market import get_history, get_profile, get_forecast, get_company
 from dashboard.analysis import PERIOD_MONTHS, select_period, summarize, compare_returns
 from etl.transform import add_indicators
 from dashboard.storage import saved_catalog, remember_company, forecast_history
-from dashboard.database_admin import render_cleanup
 
 CATALOG = load_catalog()
 st.markdown('''<style>
@@ -66,7 +65,8 @@ def price_chart(frame, kind='Line', averages=False):
 def main():
     st.title('Stock Explorer')
     st.caption('Understand price history, compare companies, and inspect experimental forecasts.')
-    render_cleanup(CATALOG)
+    if st.button('Open admin page', icon='🔒'):
+        st.switch_page('pages/admin.py')
     custom = st.session_state.get('custom_companies', {})
     saved = saved_catalog()
     for key, value in saved.items():
