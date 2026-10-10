@@ -59,7 +59,7 @@ These managed tables are separate from previous ticker-named, `stocks`, and `pri
 
 ### Manual removal of old and new prices
 
-Click **Open admin page** on the stock dashboard to open the separate **Database administration** page at `/admin`. Price charts and company search stay on the main page. Use **Back to Stock Explorer** to return; the selected ticker is preserved within the same session. Opening the admin page does not request market data, run forecasts, or automatically delete anything.
+Click **Open admin page** at the top of the stock dashboard's sidebar, above **Chart period**, to open the separate **Database administration** page at `/admin`. Price charts and company search stay on the main page. Use **Back to Stock Explorer** to return; the selected ticker is preserved within the same session. Opening the admin page does not request market data, run forecasts, or automatically delete anything.
 
 The admin controls are locked unless both `DATABASE_URL` and a private `DATABASE_ADMIN_TOKEN` of at least 24 characters are configured:
 
@@ -81,7 +81,7 @@ This setup is one-time: Streamlit retains the secrets across app sleep and resta
 
 #### Open the admin page and delete selected prices
 
-1. Click **Open admin page** on the stock dashboard, or open [Database administration](https://stock-analysis-dashboardcloud-ga4trnosdubt58eqgynqtk.streamlit.app/admin) directly.
+1. Click **Open admin page** at the top of the sidebar, or open [Database administration](https://stock-analysis-dashboardcloud-ga4trnosdubt58eqgynqtk.streamlit.app/admin) directly.
 2. Enter the generated token value in **Database administrator password**, then click **Unlock database cleanup**.
 3. Click **Refresh saved price tables** to list eligible tables.
 4. Select **Saved price tables** and choose **Rows before a date** or **All rows (old and new)**. For date-based deletion, rows on the selected cutoff date are kept.
