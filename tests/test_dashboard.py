@@ -66,3 +66,26 @@ def test_comparison_button_and_invalid_symbol():
         assert any('Enter a ticker' in warning.value for warning in at.warning)
         # Normal browsing runs again, but the invalid value never reaches the provider.
         assert not any(call.args[0]=='<SCRIPT>' for call in download.call_args_list)
+
+
+def test_company_name_search_requires_buttons_and_opens_listing():
+    app=Path(__file__).resolve().parents[1]/'dashboard'/'app.py'
+    packet={'prices':prices(),'fetched_at':'2026-10-09T23:00:00+00:00'}
+    sony={'symbol':'SONY','name':'Sony Group Corporation','exchange':'NYSE',
+          'overview':None,'currency':None,'source':'Yahoo Finance search','updated_at':None}
+    with patch('dashboard.market.get_history',return_value=packet) as history, \
+         patch('dashboard.market.get_company_matches',return_value=[sony]) as search, \
+         patch('etl.load.load_to_postgres') as db:
+        at=AppTest.from_file(str(app)).run(timeout=30)
+        element(at.text_input,'Search provider by company name').set_value('Sony').run()
+        search.assert_not_called()
+        element(at.button,'Find companies').click().run()
+        assert not at.exception
+        search.assert_called_once_with('sony')
+        assert element(at.selectbox,'Choose a company listing').value=='SONY'
+        assert not any(call.args[0]=='SONY' for call in history.call_args_list)
+        element(at.button,'Open selected company').click().run()
+        assert not at.exception
+        assert element(at.selectbox,'Search a company').value=='SONY'
+        assert any('Sony Group Corporation' in h.value for h in at.subheader)
+        db.assert_not_called()

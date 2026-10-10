@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 from dashboard.market import get_history, get_forecast, clean_prices, normalize_symbol, network_slot, model_slot, MarketUnavailable, ForecastBusy
 from dashboard.analysis import summarize, compare_returns, select_period
+from dashboard.market import get_company_matches
 
 
 def sample():
@@ -85,3 +86,36 @@ def test_daily_dates_preserve_exchange_session_date():
     result=clean_prices(raw)
     assert result.Date.iloc[0]==pd.Timestamp('2025-01-01')
     assert result.Date.dt.hour.eq(0).all()
+
+
+def test_company_search_filters_deduplicates_and_caches():
+    get_company_matches.clear()
+    with patch('dashboard.market.yf.Search') as search:
+        search.return_value.quotes = [
+            {'symbol':'SONY','longname':'Sony Group Corporation','quoteType':'EQUITY','exchDisp':'NYSE'},
+            {'symbol':'SONY','shortname':'Sony','quoteType':'EQUITY','exchDisp':'NYSE'},
+            {'symbol':'6758.T','longname':'Sony Group Corporation','quoteType':'EQUITY','exchDisp':'Tokyo'},
+            {'symbol':'ETF','longname':'A fund','quoteType':'ETF'},
+            {'symbol':'bad symbol','longname':'Bad','quoteType':'EQUITY'}]
+        found = get_company_matches('sony')
+        assert [row['symbol'] for row in found] == ['SONY','6758.T']
+        assert found[1]['exchange'] == 'Tokyo'
+        assert get_company_matches('sony') == found
+        search.assert_called_once()
+        assert search.call_args.kwargs['news_count'] == 0
+        assert search.call_args.kwargs['timeout'] == 12
+    get_company_matches.clear()
+
+
+def test_failed_company_search_is_retryable():
+    get_company_matches.clear()
+    with patch('dashboard.market.yf.Search') as search:
+        with pytest.raises(ValueError): get_company_matches(' ')
+        search.assert_not_called()
+        search.side_effect = RuntimeError('private payload')
+        with pytest.raises(MarketUnavailable,match='temporarily unavailable'): get_company_matches('sony')
+        search.side_effect = None
+        search.return_value.quotes = []
+        assert get_company_matches('sony') == []
+        assert search.call_count == 2
+    get_company_matches.clear()
