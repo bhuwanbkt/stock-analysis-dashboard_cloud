@@ -1,5 +1,6 @@
 import sys
 import time
+import json
 from pathlib import Path
 
 import streamlit as st
@@ -63,7 +64,7 @@ def price_chart(frame, kind='Line', averages=False):
 
 def main():
     st.title('Stock Explorer')
-    st.caption('Understand price history, compare companies, and inspect experimental forecasts.')
+    st.caption('Explore past performance, understand price swings, and compare companies.')
     if st.sidebar.button('Open admin page', icon='🔒', use_container_width=True):
         st.switch_page('pages/admin.py')
     custom = st.session_state.get('custom_companies', {})
@@ -153,9 +154,9 @@ def main():
     day_change = (latest.Close / previous.Close - 1) * 100
     c1,c2,c3,c4 = st.columns(4)
     c1.metric(price_label, f'{latest.Close:,.2f}', f'{day_change:+.2f}% vs previous bar')
-    c2.metric(f'{period} return', f"{stats['return_pct']:+.2f}%")
-    c3.metric('Daily volatility', f"{stats['daily_volatility_pct']:.2f}%" if stats['daily_volatility_pct'] is not None else '—')
-    c4.metric('Largest period drawdown', f"{stats['max_drawdown_pct']:.2f}%")
+    c2.metric(f'{period} price change', f"{stats['return_pct']:+.2f}%")
+    c3.metric('Daily price variation', f"{stats['daily_volatility_pct']:.2f}%" if stats['daily_volatility_pct'] is not None else '—')
+    c4.metric('Largest drop from a peak', f"{stats['max_drawdown_pct']:.2f}%")
     st.caption(f"Latest bar: {latest.Date:%Y-%m-%d} · Downloaded: {packet['fetched_at'][:16].replace('T',' ')} UTC · Yahoo Finance via yfinance")
     downloaded = packet.get('downloaded_rows', len(history))
     st.caption(f"History: {history.Date.iloc[0]:%Y-%m-%d} to {latest.Date:%Y-%m-%d} · {downloaded:,} downloaded rows · {len(history):,} valid daily rows · {len(frame):,} rows in this chart.")
@@ -170,15 +171,22 @@ def main():
     st.caption('Daily prices are adjusted for corporate actions, may be delayed, and can include an unfinished session. Returns are price returns, not a trading-strategy result.')
 
     # Render only the selected view. Streamlit tabs eagerly execute every tab body.
-    view = st.radio('View', ['Overview', 'Indicators', 'Compare', 'Price estimate'], horizontal=True, label_visibility='collapsed')
+    view = st.radio('View', ['Overview', 'Compare', 'Indicators', 'Prediction experiment'], horizontal=True, label_visibility='collapsed')
     if view == 'Overview':
         col1,col2 = st.columns([1,2])
         kind = col1.radio('Chart style', ['Line','Candlestick'], horizontal=True)
         averages = col2.checkbox('Show moving averages', value=True)
         price_chart(frame, kind, averages)
-        st.subheader('What the data says')
+        st.subheader('Performance and risk')
         movement = 'rose' if stats['return_pct'] >= 0 else 'fell'
         st.write(f"During this period, {symbol} {movement} {abs(stats['return_pct']):.2f}%. Its largest drop from a previous period high was {abs(stats['max_drawdown_pct']):.2f}%.")
+        below_peak = (1 - latest.Close/frame.Close.max()) * 100
+        st.write(f'The latest price is {below_peak:.2f}% below the highest daily closing price in this selected period.')
+        with st.expander('Understand the performance and risk numbers'):
+            st.write('Price change compares the first and last provider-adjusted daily closing prices in the selected period. Adjustments can change after corporate actions. This is not a calculation of your actual investment profit after cash payments, fees and taxes.')
+            st.write('Daily price variation measures how spread out the daily percentage changes were (their standard deviation). A larger number means bigger price swings in this history, not a prediction of tomorrow’s movement.')
+            st.write('Largest drop from a peak is the biggest fall from an earlier high closing price to a later low closing price in this period. A stock can finish higher overall and still have suffered a large drop along the way.')
+            st.caption(f'These are historical measurements from {frame.Date.iloc[0]:%Y-%m-%d} to {frame.Date.iloc[-1]:%Y-%m-%d}. They describe past price risk, not every risk of owning this company.')
         ma50 = history.MA_50.iloc[-1]
         if pd.notna(ma50):
             distance = (latest.Close / ma50 - 1) * 100
@@ -220,6 +228,8 @@ def main():
         fig.update_layout(height=380,margin=dict(l=0,r=0,t=10,b=0),hovermode='x unified')
         st.plotly_chart(fig,use_container_width=True)
     elif view == 'Compare':
+        st.subheader('Compare performance and price risk')
+        st.caption('Compare the same shared dates. A higher return can come with larger price swings and deeper drops.')
         other=st.selectbox('Compare with', [s for s in companies if s != symbol],
                            format_func=lambda value:f"{companies[value]['name']} ({value})")
         if st.button('Compare stocks') and cooldown('comparison',20):
@@ -237,11 +247,28 @@ def main():
             fig.update_layout(height=390,yaxis_title='Price return (%)',hovermode='x unified',margin=dict(l=0,r=0,t=10,b=0))
             st.plotly_chart(fig,use_container_width=True)
             st.caption(f"Both start at 0% on the first shared date: {aligned.Date.iloc[0]:%Y-%m-%d}. Latest shared date: {aligned.Date.iloc[-1]:%Y-%m-%d}.")
+            comparisons=[]
+            for label in [symbol,other]:
+                # Rebased closes preserve returns and drawdowns on exactly the shared dates.
+                risk=summarize(pd.DataFrame({'Date':aligned.Date,'Close':aligned[label]+100}))
+                comparisons.append({'Company':f"{companies[label]['name']} ({label})",
+                    'Price change (%)':risk['return_pct'], 'Largest drop from a peak (%)':risk['max_drawdown_pct'],
+                    'Price variation (%)':risk['daily_volatility_pct']})
+            st.dataframe(pd.DataFrame(comparisons).round(2),hide_index=True)
+            st.caption('Price variation measures how spread out price changes between consecutive shared dates were (their standard deviation). Missing dates or different market holidays can make these gaps longer than one trading day. These are historical comparisons, not a ranking of which stock will perform better next.')
         else:
             st.info('Choose another company and click Compare stocks. No comparison API call runs before the button is clicked.')
     else:
-        st.subheader('Estimate a future price')
-        st.caption('An experimental estimate based on past prices. The actual future price can be different.')
+        st.subheader('Prediction experiment')
+        st.caption('Test whether a model adds value beyond predicting no price change. This experiment may produce no prediction. Overview and Compare provide historical analysis even when models fail testing.')
+        study_path=Path(__file__).resolve().parents[1]/'analysis'/'model-study-2026-10-10.json'
+        if study_path.exists():
+            with st.expander('Results from a small historical model study'):
+                study=json.loads(study_path.read_text())
+                names=', '.join(row['symbol'] for row in study['sources'])
+                st.write(f"In a fixed study of {names}, {study['accepted']} of {study['checks']} stock/period/forecast-length checks passed both tests. This is a pass count, not prediction accuracy.")
+                st.caption(f"Study data cutoff: {study['as_of'][:10]}. Each stock was checked at three historical cutoffs for 5, 21 and 42 trading days ahead. This saved study does not update when you change the selected stock.")
+                st.write('The sample is small. Test periods can overlap, and the historical data uses today’s provider adjustments. These results do not establish future accuracy or trading profit.')
         period_labels={1:'1 trading day',5:'1 week · about 5 trading days',7:'7 trading days',
                        10:'2 weeks · about 10 trading days',20:'20 trading days',21:'1 month · about 21 trading days',
                        30:'30 trading days',42:'2 months · about 42 trading days',63:'3 months · about 63 trading days'}

@@ -1,6 +1,6 @@
 # Stock Explorer
 
-A lightweight Streamlit dashboard for company search, historical prices, indicators, stock comparisons, and experimental forecasts. Optional Neon PostgreSQL storage shares data across visitors and survives app restarts. The app uses one CPU process, no LLM calls, and no separate model server.
+A lightweight Streamlit dashboard for understanding historical stock performance and price risk. Its main views show price changes, price swings, drops from earlier peaks, and company comparisons. Prediction is a secondary experiment, not the main product promise. Optional Neon PostgreSQL storage shares data across visitors and survives app restarts. The app uses one CPU process, no LLM calls, and no separate model server.
 
 ## Run
 
@@ -158,7 +158,7 @@ After unlocking the separate admin page, click **Refresh storage overview** to s
 
 ## Plain-language price estimates
 
-The **Price estimate** view explains the forecast in everyday language. **How far ahead would you like to estimate?** counts trading days from the starting price date, excluding weekends and exchange holidays. **Calculate price estimate** runs the existing prediction methods; it adds no provider requests or new models.
+The **Prediction experiment** view explains model testing in everyday language. A failed check is an experiment result, while Overview and Compare remain useful for historical analysis. **How far ahead would you like to estimate?** counts trading days from the starting price date, excluding weekends and exchange holidays. **Calculate price estimate** runs the existing prediction methods; it adds no provider requests or new models.
 
 The result shows **Estimated price after N trading days**, the starting price and its date, and the estimated percentage change. That percentage is a price change, not an accuracy or confidence score. If no model passes both benchmark checks, no predicted-price card or 0% placeholder is shown. An accepted model may still have a very small return that rounds to 0.00%; this does not imply the actual price will stay unchanged. Accepted results show the recent average testing error beside the estimate. Model comparisons and error definitions are inside **How did we check this estimate?**. **View past estimates** uses readable labels for waiting and completed comparisons. Older saved results remain readable and are marked as predating the current check. New failed checks are not saved as predictions.
 
@@ -172,3 +172,28 @@ The next active request for each existing saved stock treats its earlier two-yea
 After that upgrade, the same 24-hour shared freshness rule applies. Chart-period changes use the same history and do not cause separate two-year/five-year downloads. A refresh still downloads the full five-year daily window to catch adjusted-price revisions, but existing database rows update only if values changed. Prices are unique by company and date; the saved window rolls rather than growing forever. Cleanup remains due every seven days and runs on an active visit; a sleeping app performs no downloads or cleanup. The five-year cutoff and 1,500-row per-company cap are applied on each successful refresh. Profiles, the 50-company limit, and 90-day/5,000-row forecast retention are unchanged. The separate admin page still supports manual deletion.
 
 Forecast reuse has a new model-version identity, so older unchanged-price results cannot become new accepted predictions. The saved-store resource version also changes. At the first page startup for a runtime generation, a version check reloads older imported data adapters and the forecast module in dependency order if needed, then clears memory caches once (even when imports already match), so a multipage deployment can apply the new rules without relying on a process restart. Normal reruns and cold starts do not reload current adapters; admin startup performs no database or provider requests. Future changes to these adapter contracts should bump the matching `RUNTIME_VERSION` in `dashboard/runtime.py`, `dashboard/forecast.py`, `dashboard/market.py`, `dashboard/storage.py` and `etl/shared_store.py`. More historical data increases download, memory and database use, but does not guarantee smaller errors or a prediction for every company.
+
+## Performance and risk first
+
+Overview shows **Price change**, **Daily price variation** (standard deviation of daily percentage changes), and **Largest drop from a peak**. Plain-language help explains each number and its limits. The latest close's distance below the highest close in the selected period distinguishes the current position from the largest historical drop. These use provider-adjusted closing prices and do not calculate an investor's actual profit after cash payments, fees and taxes.
+
+Compare adds a side-by-side price-change, price-variation and peak-drop table calculated on exactly the shared dates used by its chart. Its variation statistic uses changes between consecutive shared dates, which can span more than one trading day when holidays or missing bars differ. Chart controls, saved prices, cleanup and provider request limits remain unchanged. Prediction has moved to **Prediction experiment** and does not run until its button is clicked.
+
+## Small offline model study
+
+The saved [study report](analysis/model-study-2026-10-10.md) and [machine-readable results](analysis/model-study-2026-10-10.json) evaluate AAPL, MSFT and JPM at three historical cutoffs, for 5-, 21- and 42-trading-day horizons: 27 checks. **None passed both benchmark checks** in this sample. This supports keeping prediction experimental; it does not prove that all stock forecasting methods fail. No model settings or acceptance rules were changed after seeing the results. The Prediction experiment view includes a clearly dated summary of this fixed study.
+
+Run the same bounded study using exported five-year daily CSVs:
+
+```bash
+python scripts/evaluate_models.py \
+  --csv AAPL=/path/to/AAPL_daily_prices.csv \
+  --csv MSFT=/path/to/MSFT_daily_prices.csv \
+  --csv JPM=/path/to/JPM_daily_prices.csv \
+  --as-of 2026-10-10T05:45:00Z \
+  --output analysis/model-study.json
+```
+
+The script uses no API calls or database writes. It allows up to three stocks, three horizons and three historical snapshots; default snapshots remove 504, 252 and zero latest eligible rows. Models use the existing fixed settings, chronological purge gaps, separate recent holdout and completion buffer. JSON includes input fingerprints and testing dates; Markdown contains a readable result table. Forecasts for the current latest row are not recorded in Neon.
+
+The exports are currently adjusted historical prices, not archived point-in-time vintages. Snapshot histories have different lengths, some holdout periods overlap, and multi-day targets overlap within tests. The three stocks were deliberately chosen rather than sampled randomly. Pass counts are not accuracy percentages, independent trials, significance tests or proof of trading profit. Raw price CSVs remain local inputs and are not committed. Running this study again is a deliberate offline action, not a visitor-triggered job.

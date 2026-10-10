@@ -30,11 +30,13 @@ def test_browsing_custom_ticker_and_button_only_forecast():
         at=AppTest.from_file(str(app)).run(timeout=30)
         assert not at.exception
         assert element(at.selectbox,'Search a company').value=='AAPL'
+        assert any(row.value=='Performance and risk' for row in at.subheader)
+        assert any(row.label=='Largest drop from a peak' for row in at.metric)
         profile.assert_not_called();model.assert_not_called();db.assert_not_called()
         element(at.selectbox,'Search a company').set_value('MSFT').run()
         assert not at.exception
         assert any('MSFT' in h.value for h in at.subheader)
-        element(at.radio,'View').set_value('Price estimate').run()
+        element(at.radio,'View').set_value('Prediction experiment').run()
         model.assert_not_called()
         choices=element(at.selectbox,'How far ahead would you like to estimate?').options
         assert '1 month · about 21 trading days' in choices
@@ -66,7 +68,7 @@ def test_rejected_and_legacy_baseline_results_do_not_show_a_prediction():
         with patch('dashboard.market.get_history',return_value=packet), \
              patch('dashboard.market.get_forecast',return_value=result):
             at=AppTest.from_file(str(app)).run(timeout=30)
-            element(at.radio,'View').set_value('Price estimate').run()
+            element(at.radio,'View').set_value('Prediction experiment').run()
             element(at.button,'Calculate price estimate').click().run(timeout=30)
             assert not at.exception
             assert any('No model passed' in row.value for row in at.info)
@@ -84,6 +86,9 @@ def test_comparison_button_and_invalid_symbol():
         assert not at.exception
         assert any(call.args[0]=='MSFT' for call in download.call_args_list)
         assert any('Both start at 0%' in caption.value for caption in at.caption)
+        comparison=at.dataframe[0].value
+        assert len(comparison)==2 and 'Largest drop from a peak (%)' in comparison
+        assert (comparison['Largest drop from a peak (%)'] <= 0).all()
         before=download.call_count
         element(at.text_input,'Enter an additional ticker').set_value('<script>')
         element(at.button,'Look up ticker').click().run()
