@@ -7,7 +7,7 @@ PRICE_COLUMNS = {'date', 'open', 'high', 'low', 'close', 'volume'}
 
 def eligible_tables(conn, legacy_names):
     inspector = inspect(conn)
-    allowed = set(legacy_names) | {'stocks'}
+    allowed = set(legacy_names) | {'stocks', 'stock_daily_prices'}
     tables = []
     for name in inspector.get_table_names(schema='public'):
         if name not in allowed and not re.fullmatch(r'prices_[a-f0-9]{12}', name):
