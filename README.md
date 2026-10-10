@@ -48,7 +48,7 @@ At least 250 usable labelled rows are required. Overlapping multi-session test t
 
 Normal browsing makes no Neon connection or database write. CSV download is available locally in the user browser. Existing database rows are not automatically deleted, and no cleanup or retention migration is performed by this change.
 
-Optional administrator export is shown only with `ENABLE_DATABASE_EXPORT=1`; existing `DATABASE_URL`/Streamlit secrets configuration is handled by `etl/load.py`. Export explicitly replaces a deterministic table named `prices_<symbol hash>` and persists until removed or replaced. Old ticker-named export tables are not deleted. Enable export only when persistent storage is wanted.
+Optional administrator export is shown only with `ENABLE_DATABASE_EXPORT=1` and an unlocked database administrator session; existing `DATABASE_URL`/Streamlit secrets configuration is handled by `etl/load.py`. Export explicitly replaces a deterministic table named `prices_<symbol hash>` and persists until removed or replaced. Old ticker-named export tables are not deleted. Enable export only when persistent storage is wanted.
 
 ## Free-host sleep and best-effort wake-up
 
@@ -64,3 +64,18 @@ python -m pytest -q
 ```
 
 Tests use mocked data and do not require a running database or live Yahoo requests. They cover chronological purge boundaries, latest-row inference, baseline fallback, local catalog search and refresh failures, safe symbol handling, price cleaning, shared mutation-safe caches, semaphore contention/release, calculation/alignment correctness, button-only API/model execution, custom ticker flow, and optional database behavior. Legacy database tests are aligned with the deployed loader's connection-check behavior rather than the old local database-creation implementation.
+
+## Manual database cleanup (old and new rows)
+
+Open **Delete saved database data** near the top of the dashboard. It is locked unless both of these top-level Streamlit secrets (or environment settings) exist:
+
+```toml
+DATABASE_URL = "your existing Neon PostgreSQL connection URL"
+DATABASE_ADMIN_TOKEN = "your private administrator password of at least 24 characters"
+```
+
+Use a strong, unique private password and do not commit either secret to GitHub. Sign in with that password, then click **Refresh saved price tables**. The app makes no database connection until an authenticated administrator requests it. Access expires after 15 minutes, can be locked manually, and is invalidated when the configured password changes.
+
+Select tables and either **Rows before a date** (strictly before; the selected date is kept) or **All rows (old and new)**. Type **DELETE**, check the permanent-deletion confirmation, and click **Delete selected saved rows**. A transaction deletes only selected rows, reports counts, and keeps table structures. No table drop, cascading deletion, automatic retention schedule, or cache deletion is performed. Download/export a backup before deleting data you might need. Clearing saved rows does not affect live API charts or forecasts.
+
+Eligible tables must have daily price columns (Date, Open, High, Low, Close, Volume) and be a catalog ticker table, the old `stocks` table, or a new `prices_<12-character hash>` export. Legacy tables for other tickers can be explicitly listed in the owner's `DATABASE_LEGACY_STOCK_TABLES` setting (comma-separated exact table names). Other tables are excluded. Eligibility is rechecked in the deletion transaction. Selected tables are locked briefly to prevent changing dependencies between checking and deleting; incoming foreign keys (including from other schemas) and custom triggers block cleanup. Connection, lock, and statement timeouts limit stuck requests; failures roll back all selected deletions. This option is configured and tested without deleting production data.
