@@ -2,6 +2,7 @@ from unittest.mock import patch
 from dashboard.runtime import prepare_runtime
 from dashboard import forecast as forecast_module, storage, market
 from etl import shared_store
+import dashboard
 
 
 def test_current_runtime_does_not_reload_or_contact_database():
@@ -27,3 +28,10 @@ def test_old_runtime_reloads_dependencies_and_clears_only_memory_caches():
         for cached in [store, maintenance, catalog, history, forecast]:
             cached.clear.assert_called_once()
             cached.assert_not_called()
+
+
+def test_streamlit_stale_package_attribute_does_not_trigger_invalid_reload():
+    with patch.object(dashboard, 'storage', object()), \
+         patch('dashboard.runtime.importlib.reload') as reload:
+        prepare_runtime()
+        reload.assert_not_called()

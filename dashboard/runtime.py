@@ -12,15 +12,18 @@ def prepare_runtime():
 
 
 def _prepare_runtime():
-    from etl import shared_store
-    from dashboard import forecast, storage, market
-    modules = (shared_store, forecast, storage, market)
+    # Streamlit can remove modules from sys.modules while leaving stale package
+    # attributes behind. Resolve canonical imports rather than those attributes.
+    names = ('etl.shared_store', 'dashboard.forecast', 'dashboard.storage', 'dashboard.market')
+    modules = tuple(importlib.import_module(name) for name in names)
     if all(getattr(module, 'RUNTIME_VERSION', None) == RUNTIME_VERSION for module in modules):
         return
     # Reload dependencies first, before running either page. This runs only for an
     # old in-process generation; a normal rerun or cold start needs no reload.
-    for module in modules:
-        importlib.reload(module)
+    for name in names:
+        importlib.reload(importlib.import_module(name))
+    storage = importlib.import_module('dashboard.storage')
+    market = importlib.import_module('dashboard.market')
     storage._store.clear()
     storage._maintenance.clear()
     storage.saved_catalog.clear()
