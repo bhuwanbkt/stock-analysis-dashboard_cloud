@@ -117,3 +117,36 @@ def get_profile(symbol):
         raise MarketUnavailable('Company overview is temporarily unavailable. Price analysis still works.') from exc
     finally:
         slot.release()
+
+
+@st.cache_data(ttl=86400, max_entries=48, show_spinner=False)
+def get_company_matches(query):
+    query = ' '.join(query.strip().split())
+    if not 2 <= len(query) <= 60:
+        raise ValueError('Enter a company name or ticker with 2–60 characters.')
+    slot = network_slot()
+    if not slot.acquire(blocking=False):
+        raise MarketUnavailable('Another data request is running. Please retry in a moment.')
+    try:
+        quotes = yf.Search(query, max_results=8, news_count=0, lists_count=0,
+                           recommended=0, include_cb=False, timeout=12).quotes
+        matches = {}
+        for quote in quotes[:8]:
+            if quote.get('quoteType') != 'EQUITY':
+                continue
+            try:
+                symbol = normalize_symbol(quote.get('symbol', ''))
+            except ValueError:
+                continue
+            name = quote.get('longname') or quote.get('shortname')
+            if not name:
+                continue
+            matches[symbol] = {'symbol': symbol, 'name': str(name),
+                               'exchange': str(quote.get('exchDisp') or quote.get('exchange') or 'Exchange unavailable'),
+                               'overview': None, 'currency': None,
+                               'source': 'Yahoo Finance search', 'updated_at': None}
+        return list(matches.values())
+    except Exception as exc:
+        raise MarketUnavailable('Company search is temporarily unavailable. You can still try a known ticker below.') from exc
+    finally:
+        slot.release()

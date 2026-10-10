@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import plotly.graph_objects as go
 from dashboard.catalog import load_catalog
-from dashboard.market import get_history, get_profile, get_forecast, normalize_symbol, MarketUnavailable, ForecastBusy
+from dashboard.market import get_history, get_profile, get_forecast, get_company_matches, normalize_symbol, MarketUnavailable, ForecastBusy
 from dashboard.analysis import PERIOD_MONTHS, select_period, summarize, compare_returns
 from etl.transform import add_indicators
 
@@ -30,6 +30,16 @@ def cooldown(action, seconds=20):
         return False
     st.session_state['last_' + action] = now
     return True
+
+
+def select_company(candidate, record):
+    custom = dict(list(st.session_state.get('custom_companies', {}).items())[-9:])
+    if candidate not in CATALOG:
+        custom[candidate] = record
+        st.session_state.custom_companies = custom
+    st.session_state.active_symbol = candidate
+    st.session_state.pop('company_picker', None)
+    st.rerun()
 
 
 def price_chart(frame, kind='Line', averages=False):
@@ -63,7 +73,34 @@ def main():
                           format_func=lambda value: f"{companies[value]['name']} ({value})", key='company_picker')
     st.session_state.active_symbol = symbol
     st.caption('Type a name or ticker inside the dropdown. The saved catalog needs no API request.')
-    with st.expander('Ticker not listed?'):
+    with st.expander('Company or ticker not listed?'):
+        with st.form('company_lookup'):
+            query = st.text_input('Search provider by company name', max_chars=60, placeholder='Sony')
+            searched = st.form_submit_button('Find companies')
+        if searched and cooldown('company_search'):
+            st.session_state.pop('company_matches', None)
+            try:
+                with st.spinner('Finding company listings...'):
+                    matches = get_company_matches(' '.join(query.split()).casefold())
+                st.session_state.company_matches = matches
+                if not matches:
+                    st.info('No stock listings were returned. Try a different name or a known ticker below.')
+            except (ValueError, MarketUnavailable) as exc:
+                st.info(str(exc))
+        matches = st.session_state.get('company_matches', [])
+        if matches:
+            by_symbol = {row['symbol']: row for row in matches}
+            selected = st.selectbox('Choose a company listing', list(by_symbol),
+                                    format_func=lambda value: f"{by_symbol[value]['name']} ({value}) · {by_symbol[value]['exchange']}")
+            st.caption('A company may trade on several exchanges. Choose the listing you want; daily history is checked before opening it.')
+            if st.button('Open selected company') and cooldown('ticker_lookup'):
+                try:
+                    with st.spinner('Checking daily price history...'):
+                        get_history(selected)
+                    select_company(selected, by_symbol[selected])
+                except MarketUnavailable as exc:
+                    st.warning(str(exc))
+        st.caption('Already know the ticker? Look it up directly below.')
         with st.form('ticker_lookup'):
             raw = st.text_input('Enter an additional ticker', max_chars=15, placeholder='COST or BRK-B')
             submitted = st.form_submit_button('Look up ticker')
@@ -72,15 +109,9 @@ def main():
                 candidate = normalize_symbol(raw)
                 with st.spinner('Checking daily price history...'):
                     get_history(candidate)
-                if candidate not in companies:
-                    # Bounded session-only catalog; never write into GitHub or Neon from a browser session.
-                    custom = dict(list(custom.items())[-9:])
-                    custom[candidate] = {'symbol': candidate, 'name': candidate, 'overview': None,
-                                         'currency': None, 'source': 'Validated daily price history', 'updated_at': None}
-                    st.session_state.custom_companies = custom
-                st.session_state.active_symbol = candidate
-                del st.session_state['company_picker']
-                st.rerun()
+                select_company(candidate, companies.get(candidate) or {
+                    'symbol': candidate, 'name': candidate, 'overview': None,
+                    'currency': None, 'source': 'Validated daily price history', 'updated_at': None})
             except (ValueError, MarketUnavailable) as exc:
                 st.warning(str(exc))
 
