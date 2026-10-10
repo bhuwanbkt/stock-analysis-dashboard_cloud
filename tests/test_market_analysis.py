@@ -33,6 +33,7 @@ def test_history_is_shared_and_returns_mutation_safe_copies():
         first=get_history('AAPL')
         first['prices'].loc[0,'Close']=999
         second=get_history('AAPL')
+        assert second['downloaded_rows'] == 4 and second['period'] == '2y'
         assert second['prices'].Close.iloc[0]==100
         ticker.return_value.history.assert_called_once()
         kwargs=ticker.return_value.history.call_args.kwargs
