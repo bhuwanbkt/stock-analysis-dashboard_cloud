@@ -1,0 +1,1125 @@
+{
+  "evaluated_at": "2026-10-10T05:46:58.964048+00:00",
+  "as_of": "2026-10-10T05:45:00+00:00",
+  "source": "Daily CSV exports from Stock Explorer / Yahoo Finance via yfinance",
+  "method": "Fixed app models; three purged development folds; separate recent holdout; no tuning during this study",
+  "completion_policy": "36h-utc-v1",
+  "horizons": [
+    5,
+    21,
+    42
+  ],
+  "snapshot_offsets": [
+    504,
+    252,
+    0
+  ],
+  "sources": [
+    {
+      "symbol": "AAPL",
+      "eligible_rows": 1254,
+      "data_fingerprint": "fb07021c9f8f5e26f9c830be8fab724dd992d284c00267e231af162843472ac4"
+    },
+    {
+      "symbol": "MSFT",
+      "eligible_rows": 1254,
+      "data_fingerprint": "af47c1f45c5e793cef1c9e4387e95102d29809b9f4a8bc71734d3a49f3394cb6"
+    },
+    {
+      "symbol": "JPM",
+      "eligible_rows": 1254,
+      "data_fingerprint": "1c72e54aaaf5a082332781aabf0d45b7d313975008008a6963b53fc65c55e381"
+    }
+  ],
+  "checks": 27,
+  "accepted": 0,
+  "results": [
+    {
+      "symbol": "AAPL",
+      "snapshot_date": "2024-10-03",
+      "horizon": 5,
+      "input_rows": 750,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 2.8559247883000975,
+      "development_benchmark_pp": 2.8559247883000975,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 3.0689229277912666,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 2.8559247883000975,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 3.0689229277912666,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 3.1483865871964527,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 3.0854251997646585,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 2.773825957552799,
+      "recent_benchmark_pp": 2.773825957552799,
+      "test_rows": 145,
+      "test_start": "2024-03-01 00:00:00",
+      "test_end": "2024-09-26 00:00:00"
+    },
+    {
+      "symbol": "AAPL",
+      "snapshot_date": "2024-10-03",
+      "horizon": 21,
+      "input_rows": 750,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 6.234297910145488,
+      "development_benchmark_pp": 6.234297910145488,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 7.158670603991501,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 6.234297910145488,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 8.159944124090147,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 7.866397567336833,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 7.158670603991501,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 6.265401145217296,
+      "recent_benchmark_pp": 6.265401145217296,
+      "test_rows": 141,
+      "test_start": "2024-02-13 00:00:00",
+      "test_end": "2024-09-04 00:00:00"
+    },
+    {
+      "symbol": "AAPL",
+      "snapshot_date": "2024-10-03",
+      "horizon": 42,
+      "input_rows": 750,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 9.127111051090786,
+      "development_benchmark_pp": 9.127111051090786,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 10.496776145565441,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 9.127111051090786,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 11.659894952655838,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 11.06558114691322,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 10.496776145565441,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 11.55438818420283,
+      "recent_benchmark_pp": 11.55438818420283,
+      "test_rows": 137,
+      "test_start": "2024-01-19 00:00:00",
+      "test_end": "2024-08-05 00:00:00"
+    },
+    {
+      "symbol": "AAPL",
+      "snapshot_date": "2025-10-07",
+      "horizon": 5,
+      "input_rows": 1002,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 2.7171184253893257,
+      "development_benchmark_pp": 2.7171184253893257,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 2.814387117796765,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 2.7171184253893257,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 2.814387117796765,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 2.996528380971742,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 2.908946009155138,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 3.8299310847740733,
+      "recent_benchmark_pp": 3.8299310847740733,
+      "test_rows": 195,
+      "test_start": "2024-12-18 00:00:00",
+      "test_end": "2025-09-30 00:00:00"
+    },
+    {
+      "symbol": "AAPL",
+      "snapshot_date": "2025-10-07",
+      "horizon": 21,
+      "input_rows": 1002,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 5.616035250712935,
+      "development_benchmark_pp": 5.616035250712935,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 6.024273098216571,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 5.616035250712935,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 6.024273098216571,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 6.827688501718041,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 6.028049361662636,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 6.559644089780732,
+      "recent_benchmark_pp": 6.559644089780732,
+      "test_rows": 192,
+      "test_start": "2024-11-29 00:00:00",
+      "test_end": "2025-09-08 00:00:00"
+    },
+    {
+      "symbol": "AAPL",
+      "snapshot_date": "2025-10-07",
+      "horizon": 42,
+      "input_rows": 1002,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 8.890971604413975,
+      "development_benchmark_pp": 8.890971604413975,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 9.478010019118758,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 8.890971604413975,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 9.478010019118758,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 10.132886080921493,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 9.540271731258372,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 8.555976046413443,
+      "recent_benchmark_pp": 8.555976046413443,
+      "test_rows": 188,
+      "test_start": "2024-11-05 00:00:00",
+      "test_end": "2025-08-07 00:00:00"
+    },
+    {
+      "symbol": "AAPL",
+      "snapshot_date": "2026-10-08",
+      "horizon": 5,
+      "input_rows": 1254,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 2.9440675978214355,
+      "development_benchmark_pp": 2.9440675978214355,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 2.958885184851949,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 2.9440675978214355,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 2.958885184851949,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 3.124034671918275,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 3.015157830840577,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 2.840276458615634,
+      "recent_benchmark_pp": 2.840276458615634,
+      "test_rows": 245,
+      "test_start": "2025-10-10 00:00:00",
+      "test_end": "2026-10-01 00:00:00"
+    },
+    {
+      "symbol": "AAPL",
+      "snapshot_date": "2026-10-08",
+      "horizon": 21,
+      "input_rows": 1254,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 5.818553726082702,
+      "development_benchmark_pp": 5.818553726082702,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 5.917378122484553,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 5.818553726082702,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 5.917378122484553,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 6.750852972809766,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 6.389475147744187,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 6.071889725629734,
+      "recent_benchmark_pp": 6.071889725629734,
+      "test_rows": 242,
+      "test_start": "2025-09-23 00:00:00",
+      "test_end": "2026-09-09 00:00:00"
+    },
+    {
+      "symbol": "AAPL",
+      "snapshot_date": "2026-10-08",
+      "horizon": 42,
+      "input_rows": 1254,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 8.3077854862355,
+      "development_benchmark_pp": 8.3077854862355,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 8.89249029870611,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 8.3077854862355,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 8.89249029870611,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 9.91464639645755,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 9.143685911997567,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 7.347770322220315,
+      "recent_benchmark_pp": 7.347770322220315,
+      "test_rows": 238,
+      "test_start": "2025-08-28 00:00:00",
+      "test_end": "2026-08-10 00:00:00"
+    },
+    {
+      "symbol": "MSFT",
+      "snapshot_date": "2024-10-03",
+      "horizon": 5,
+      "input_rows": 750,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 2.897065914550676,
+      "development_benchmark_pp": 2.897065914550676,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 3.1638679923784845,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 2.897065914550676,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 3.3750291109398125,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 3.2986813922227234,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 3.1638679923784845,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 2.445051352362141,
+      "recent_benchmark_pp": 2.445051352362141,
+      "test_rows": 145,
+      "test_start": "2024-03-01 00:00:00",
+      "test_end": "2024-09-26 00:00:00"
+    },
+    {
+      "symbol": "MSFT",
+      "snapshot_date": "2024-10-03",
+      "horizon": 21,
+      "input_rows": 750,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 6.218435520127635,
+      "development_benchmark_pp": 6.218435520127635,
+      "best_learned_method": "Random Forest",
+      "best_learned_development_error_pp": 7.398945214767508,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 6.218435520127635,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 7.518879455612685,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 7.398945214767508,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 7.434659568866306,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 4.681721040350077,
+      "recent_benchmark_pp": 4.681721040350077,
+      "test_rows": 141,
+      "test_start": "2024-02-13 00:00:00",
+      "test_end": "2024-09-04 00:00:00"
+    },
+    {
+      "symbol": "MSFT",
+      "snapshot_date": "2024-10-03",
+      "horizon": 42,
+      "input_rows": 750,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 8.743002502022387,
+      "development_benchmark_pp": 8.743002502022387,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 12.302039240400862,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 8.743002502022387,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 12.302039240400862,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 13.05722972125174,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 12.905093788763924,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 4.85914662113786,
+      "recent_benchmark_pp": 4.85914662113786,
+      "test_rows": 137,
+      "test_start": "2024-01-19 00:00:00",
+      "test_end": "2024-08-05 00:00:00"
+    },
+    {
+      "symbol": "MSFT",
+      "snapshot_date": "2025-10-07",
+      "horizon": 5,
+      "input_rows": 1002,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 2.6367452990523312,
+      "development_benchmark_pp": 2.6367452990523312,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 2.7777710899695003,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 2.6367452990523312,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 2.8141161938522545,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 2.816238142586568,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 2.7777710899695003,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 2.484671395799642,
+      "recent_benchmark_pp": 2.484671395799642,
+      "test_rows": 195,
+      "test_start": "2024-12-18 00:00:00",
+      "test_end": "2025-09-30 00:00:00"
+    },
+    {
+      "symbol": "MSFT",
+      "snapshot_date": "2025-10-07",
+      "horizon": 21,
+      "input_rows": 1002,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 5.364539722397495,
+      "development_benchmark_pp": 5.364539722397495,
+      "best_learned_method": "Random Forest",
+      "best_learned_development_error_pp": 6.0359475690852005,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 5.364539722397495,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 6.17792269033279,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 6.0359475690852005,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 6.108723370216442,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 5.968578715635128,
+      "recent_benchmark_pp": 5.968578715635128,
+      "test_rows": 192,
+      "test_start": "2024-11-29 00:00:00",
+      "test_end": "2025-09-08 00:00:00"
+    },
+    {
+      "symbol": "MSFT",
+      "snapshot_date": "2025-10-07",
+      "horizon": 42,
+      "input_rows": 1002,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 7.773480632702926,
+      "development_benchmark_pp": 7.773480632702926,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 10.88241107750115,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 7.773480632702926,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 10.88241107750115,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 11.802343799233078,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 11.300956664675804,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 10.218682125965225,
+      "recent_benchmark_pp": 10.218682125965225,
+      "test_rows": 188,
+      "test_start": "2024-11-05 00:00:00",
+      "test_end": "2025-08-07 00:00:00"
+    },
+    {
+      "symbol": "MSFT",
+      "snapshot_date": "2026-10-08",
+      "horizon": 5,
+      "input_rows": 1254,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 2.489087697460632,
+      "development_benchmark_pp": 2.489087697460632,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 2.697038112069115,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 2.489087697460632,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 2.746024765732219,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 2.7801768060633907,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 2.697038112069115,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 3.553334559037998,
+      "recent_benchmark_pp": 3.553334559037998,
+      "test_rows": 245,
+      "test_start": "2025-10-10 00:00:00",
+      "test_end": "2026-10-01 00:00:00"
+    },
+    {
+      "symbol": "MSFT",
+      "snapshot_date": "2026-10-08",
+      "horizon": 21,
+      "input_rows": 1254,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 5.41075855703661,
+      "development_benchmark_pp": 5.41075855703661,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 6.330439685116001,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 5.41075855703661,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 6.330439685116001,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 6.537785154565783,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 6.334832006967056,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 7.650653453714387,
+      "recent_benchmark_pp": 7.650653453714387,
+      "test_rows": 242,
+      "test_start": "2025-09-23 00:00:00",
+      "test_end": "2026-09-09 00:00:00"
+    },
+    {
+      "symbol": "MSFT",
+      "snapshot_date": "2026-10-08",
+      "horizon": 42,
+      "input_rows": 1254,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 8.249770120287934,
+      "development_benchmark_pp": 8.249770120287934,
+      "best_learned_method": "Ridge regression",
+      "best_learned_development_error_pp": 10.09977379202989,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 8.249770120287934,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 10.09977379202989,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 11.159241062143058,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 10.76936514965062,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 12.011054053400827,
+      "recent_benchmark_pp": 12.011054053400827,
+      "test_rows": 238,
+      "test_start": "2025-08-28 00:00:00",
+      "test_end": "2026-08-10 00:00:00"
+    },
+    {
+      "symbol": "JPM",
+      "snapshot_date": "2024-10-03",
+      "horizon": 5,
+      "input_rows": 750,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 2.5396511641616124,
+      "development_benchmark_pp": 2.5396511641616124,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 2.857083854749041,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 2.5396511641616124,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 3.439973665311016,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 3.121597396104724,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 2.857083854749041,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 2.5068185785800026,
+      "recent_benchmark_pp": 2.5068185785800026,
+      "test_rows": 145,
+      "test_start": "2024-03-01 00:00:00",
+      "test_end": "2024-09-26 00:00:00"
+    },
+    {
+      "symbol": "JPM",
+      "snapshot_date": "2024-10-03",
+      "horizon": 21,
+      "input_rows": 750,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 5.750625205786278,
+      "development_benchmark_pp": 5.750625205786278,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 7.862061111784111,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 5.750625205786278,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 8.497851092138273,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 7.896280664639225,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 7.862061111784111,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 4.5576415740248235,
+      "recent_benchmark_pp": 4.5576415740248235,
+      "test_rows": 141,
+      "test_start": "2024-02-13 00:00:00",
+      "test_end": "2024-09-04 00:00:00"
+    },
+    {
+      "symbol": "JPM",
+      "snapshot_date": "2024-10-03",
+      "horizon": 42,
+      "input_rows": 750,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 8.029753534296031,
+      "development_benchmark_pp": 8.029753534296031,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 12.078190122278635,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 8.029753534296031,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 12.995245036225933,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 12.203784006272786,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 12.078190122278635,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 5.790011590632487,
+      "recent_benchmark_pp": 5.790011590632487,
+      "test_rows": 137,
+      "test_start": "2024-01-19 00:00:00",
+      "test_end": "2024-08-05 00:00:00"
+    },
+    {
+      "symbol": "JPM",
+      "snapshot_date": "2025-10-07",
+      "horizon": 5,
+      "input_rows": 1002,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 2.5085339363341763,
+      "development_benchmark_pp": 2.5085339363341763,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 3.005564575932281,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 2.5085339363341763,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 3.283349913432381,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 3.1346803694458436,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 3.005564575932281,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 2.855885072801201,
+      "recent_benchmark_pp": 2.855885072801201,
+      "test_rows": 195,
+      "test_start": "2024-12-18 00:00:00",
+      "test_end": "2025-09-30 00:00:00"
+    },
+    {
+      "symbol": "JPM",
+      "snapshot_date": "2025-10-07",
+      "horizon": 21,
+      "input_rows": 1002,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 5.751008490577784,
+      "development_benchmark_pp": 5.751008490577784,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 7.208530146207849,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 5.751008490577784,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 7.928734102636563,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 7.301522169491805,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 7.208530146207849,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 6.433393451993119,
+      "recent_benchmark_pp": 6.433393451993119,
+      "test_rows": 192,
+      "test_start": "2024-11-29 00:00:00",
+      "test_end": "2025-09-08 00:00:00"
+    },
+    {
+      "symbol": "JPM",
+      "snapshot_date": "2025-10-07",
+      "horizon": 42,
+      "input_rows": 1002,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 7.795125134012454,
+      "development_benchmark_pp": 7.795125134012454,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 10.764687903438,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 7.795125134012454,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 11.061285374161455,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 10.93090673038619,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 10.764687903438,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 9.908592308946552,
+      "recent_benchmark_pp": 9.908592308946552,
+      "test_rows": 188,
+      "test_start": "2024-11-05 00:00:00",
+      "test_end": "2025-08-07 00:00:00"
+    },
+    {
+      "symbol": "JPM",
+      "snapshot_date": "2026-10-08",
+      "horizon": 5,
+      "input_rows": 1254,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 2.4677934600696823,
+      "development_benchmark_pp": 2.4677934600696823,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 2.79254711017905,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 2.4677934600696823,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 3.0691276994819834,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 2.9674310153731156,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 2.79254711017905,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 2.2193174821480817,
+      "recent_benchmark_pp": 2.2193174821480817,
+      "test_rows": 245,
+      "test_start": "2025-10-10 00:00:00",
+      "test_end": "2026-10-01 00:00:00"
+    },
+    {
+      "symbol": "JPM",
+      "snapshot_date": "2026-10-08",
+      "horizon": 21,
+      "input_rows": 1254,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 5.580508262181453,
+      "development_benchmark_pp": 5.580508262181453,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 6.379430879711516,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 5.580508262181453,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 6.720315414617212,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 6.601804946596003,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 6.379430879711516,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 4.718060907551215,
+      "recent_benchmark_pp": 4.718060907551215,
+      "test_rows": 242,
+      "test_start": "2025-09-23 00:00:00",
+      "test_end": "2026-09-09 00:00:00"
+    },
+    {
+      "symbol": "JPM",
+      "snapshot_date": "2026-10-08",
+      "horizon": 42,
+      "input_rows": 1254,
+      "accepted": false,
+      "selected_method": "Unchanged-price baseline",
+      "reason": "No model passed our prediction check. The models did not beat the no-change benchmark in the earlier historical tests. No predicted price is shown. This does not mean the stock price will stay unchanged.",
+      "development_error_pp": 8.431873133939803,
+      "development_benchmark_pp": 8.431873133939803,
+      "best_learned_method": "Gradient boosting",
+      "best_learned_development_error_pp": 10.220643570666816,
+      "development_scores": [
+        {
+          "method": "Unchanged-price baseline",
+          "mae_pct": 8.431873133939803,
+          "selected": true
+        },
+        {
+          "method": "Ridge regression",
+          "mae_pct": 10.53350917503749,
+          "selected": false
+        },
+        {
+          "method": "Random Forest",
+          "mae_pct": 10.495338513255104,
+          "selected": false
+        },
+        {
+          "method": "Gradient boosting",
+          "mae_pct": 10.220643570666816,
+          "selected": false
+        }
+      ],
+      "recent_error_pp": 5.980756255732687,
+      "recent_benchmark_pp": 5.980756255732687,
+      "test_rows": 238,
+      "test_start": "2025-08-28 00:00:00",
+      "test_end": "2026-08-10 00:00:00"
+    }
+  ],
+  "limitations": [
+    "Only three deliberately chosen US stocks; not representative of all markets.",
+    "Historical snapshots use currently adjusted prices, not archived point-in-time provider vintages.",
+    "Test targets and some snapshot windows overlap; counts are not independent trials.",
+    "Passing an error comparison does not establish statistical significance or future trading profit.",
+    "No hyperparameters or acceptance thresholds were changed after seeing these results."
+  ]
+}
