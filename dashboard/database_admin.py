@@ -50,6 +50,7 @@ def render_cleanup(catalog, *, standalone=False):
                         st.session_state.database_admin_auth = {
                             'at': now, 'fingerprint': hashlib.sha256((secret + '\0' + database_url).encode()).hexdigest()}
                         st.session_state.pop('database_price_tables', None)
+                        st.session_state.pop('database_storage_summary', None)
                         st.rerun()
                     else:
                         st.warning('Administrator password did not match.')
@@ -58,7 +59,29 @@ def render_cleanup(catalog, *, standalone=False):
         if st.button('Lock database cleanup'):
             st.session_state.pop('database_admin_auth', None)
             st.session_state.pop('database_price_tables', None)
+            st.session_state.pop('database_storage_summary', None)
             st.rerun()
+        st.subheader('Storage overview')
+        if st.button('Refresh storage overview'):
+            try:
+                from dashboard.storage import _store
+                summary = _store(database_url).storage_summary()
+                st.session_state.database_storage_summary = summary
+            except Exception:
+                st.session_state.pop('database_storage_summary', None)
+                st.error('Storage information is unavailable. Check the database connection and permissions.')
+        summary = st.session_state.get('database_storage_summary')
+        if summary:
+            a, b, c = st.columns(3)
+            a.metric('Saved companies', f"{summary['companies']} / {summary['company_limit']}")
+            b.metric('Saved price rows', f"{summary['prices']:,}")
+            c.metric('Saved forecasts', f"{summary['forecasts']} / {summary['forecast_limit']}")
+            if summary['database_bytes'] is not None:
+                st.caption(f"Whole database size including other tables and indexes: {summary['database_bytes'] / 1024**2:.2f} MiB. This is not your Neon compute or billing quota.")
+            st.caption(f"Last automatic cleanup (UTC): {summary['last_cleanup'] or 'Never'} · Last price refresh (UTC): {summary['last_refresh'] or 'Never'}")
+            st.caption('Cleanup is checked on active visits when seven days are due. Sleeping apps run no cleanup. Deleting rows does not immediately shrink database files.')
+        else:
+            st.caption('Click Refresh storage overview to inspect saved data. No market-data download is requested.')
         legacy = set(symbol.lower() for symbol in catalog)
         legacy.update(name.strip() for name in setting('DATABASE_LEGACY_STOCK_TABLES').split(',') if name.strip())
         if st.button('Refresh saved price tables'):
@@ -94,5 +117,6 @@ def render_cleanup(catalog, *, standalone=False):
                                                before=cutoff if mode == 'Rows before a date' else None)
                     st.success('Deleted saved rows: ' + ', '.join(f'{name}: {count:,}' for name, count in counts.items()))
                     st.session_state.pop('database_price_tables', None)
+                    st.session_state.pop('database_storage_summary', None)
                 except Exception:
                     st.error('Cleanup failed and the transaction was rolled back. Check the connection, table dependencies, and database permissions.')

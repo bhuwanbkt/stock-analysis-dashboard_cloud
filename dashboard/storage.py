@@ -34,7 +34,7 @@ def get_store():
         return None
 
 
-@st.cache_data(ttl=300,max_entries=1,show_spinner=False)
+@st.cache_data(ttl=3600,max_entries=1,show_spinner=False)
 def saved_catalog():
     repo=get_store()
     try: return repo.catalog() if repo else {}

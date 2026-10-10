@@ -221,3 +221,74 @@ def test_profile_fresh_reuse_and_failed_refresh_preserves_previous():
         assert result['overview']=='Saved text' and result['profile_stale']
         db.save_profile.assert_not_called()
     get_profile.clear()
+
+
+def test_refresh_updates_only_changed_price_rows(repo):
+    save(repo)
+    with repo.transaction() as conn:
+        conn.execute(text('CREATE TABLE update_counter (n INTEGER)'))
+        conn.execute(text('INSERT INTO update_counter VALUES (0)'))
+        conn.execute(text('CREATE TRIGGER count_price_updates AFTER UPDATE ON stock_daily_prices BEGIN UPDATE update_counter SET n=n+1; END'))
+    save(repo,now=NOW+timedelta(days=1))
+    with repo.transaction() as conn:
+        assert conn.scalar(text('SELECT n FROM update_counter')) == 0
+    changed=frame();changed.loc[0,'Volume']=2000
+    save(repo,data=changed,now=NOW+timedelta(days=2))
+    with repo.transaction() as conn:
+        assert conn.scalar(text('SELECT n FROM update_counter')) == 1
+    save(repo,data=frame(factor=.5),now=NOW+timedelta(days=3))
+    assert repo.read_history('AAPL',NOW+timedelta(days=3))['prices'].Close.iloc[0]==50
+
+
+def test_completion_buffer_boundary_and_timezone():
+    from dashboard.market import completed_forecast_prices
+    data=frame('2026-10-08',2)
+    assert len(completed_forecast_prices(data,'2026-10-09T11:59:59Z'))==0
+    assert len(completed_forecast_prices(data,'2026-10-09T12:00:00Z'))==1
+    assert len(completed_forecast_prices(data,'2026-10-10T07:00:00-05:00'))==2
+
+
+def test_saved_forecast_survives_cache_reset_and_revised_data_recalculates(repo):
+    from dashboard.market import get_forecast
+    data=frame()
+    save(repo,data=data)
+    result={**forecast_result(),'as_of':str(data.Date.iloc[-1]),'horizon':2}
+    with patch('dashboard.market.get_store',return_value=repo), \
+         patch('dashboard.market.completed_forecast_prices',side_effect=lambda p:p.copy()), \
+         patch('dashboard.forecast.forecast',return_value=result.copy()) as calculate:
+        get_forecast.clear()
+        first=get_forecast('AAPL',data,2)
+        assert first['tracking_saved'] and first['calculation_source']=='Calculated now'
+        get_forecast.clear()
+        again=get_forecast('AAPL',data,2)
+        assert again['calculation_source']=='Saved forecast'
+        assert calculate.call_count==1
+        revised=data.copy();revised.loc[0,'Close']+=1
+        get_forecast.clear()
+        get_forecast('AAPL',revised,2)
+        assert calculate.call_count==2 and count(repo,forecasts)==2
+        assert first['data_fingerprint']!=get_forecast('AAPL',revised,2)['data_fingerprint']
+    get_forecast.clear()
+
+
+def test_new_forecast_evaluation_waits_for_completed_target(repo):
+    save(repo)
+    result={**forecast_result(),'completion_policy':'36h-utc-v1','horizon':1}
+    repo.record_forecast('AAPL',result,'v3',NOW)
+    data=frame('2026-10-01',2)
+    with repo.transaction() as conn:
+        repo.evaluate_forecasts(conn,'AAPL',data,datetime(2026,10,3,11,59,tzinfo=timezone.utc))
+    assert repo.forecast_history('AAPL')[0]['Status']=='Pending'
+    with repo.transaction() as conn:
+        repo.evaluate_forecasts(conn,'AAPL',data,datetime(2026,10,3,12,tzinfo=timezone.utc))
+    assert repo.forecast_history('AAPL')[0]['Observed return (%)']==pytest.approx(1)
+
+
+def test_storage_overview_counts_and_timestamps(repo):
+    save(repo)
+    repo.record_forecast('AAPL',forecast_result(),'v1',NOW)
+    repo.maintain(NOW)
+    summary=repo.storage_summary()
+    assert (summary['companies'],summary['prices'],summary['forecasts'])==(1,4,1)
+    assert summary['last_cleanup']==NOW and summary['last_refresh']==NOW
+    assert summary['database_bytes'] is None and summary['company_limit']==50

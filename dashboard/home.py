@@ -241,6 +241,7 @@ def main():
             st.info('Choose another company and click Compare stocks. No comparison API call runs before the button is clicked.')
     else:
         st.subheader('Experimental forecast')
+        st.caption('Forecasts use bars at least 36 hours past their UTC session-date midnight. This conservative buffer can lag the latest chart bar; no exchange calendar is assumed.')
         horizon=st.selectbox('Trading sessions ahead',[1,5,7,10,20,30],index=2)
         st.caption('Ridge regression, Random Forest, and gradient boosting compete with unchanged price in the same earlier chronological validation windows. The best validation method is tested on a separate latest window.')
         if st.button('Run forecast') and cooldown('forecast',20):
@@ -256,6 +257,7 @@ def main():
             if result['available']:
                 st.metric('Estimated endpoint (quote units)',f"{result['predicted_price']:,.2f}",f"{result['predicted_return']:+.2%}")
                 st.caption('Forecast saved for later evaluation.' if result.get('tracking_saved') else 'Forecast shown in memory; no tracking record was saved.')
+                st.caption(f"Calculation source: {result.get('calculation_source', 'Calculated now')} · Forecast data ends: {result['as_of'][:10]}")
                 st.write(f"Selected method: **{result['model']}**")
                 if result.get('validation_scores'):
                     scores = pd.DataFrame(result['validation_scores']).rename(columns={
