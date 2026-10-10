@@ -59,7 +59,9 @@ These managed tables are separate from previous ticker-named, `stocks`, and `pri
 
 ### Manual removal of old and new prices
 
-The **Delete saved database data** expander is locked unless both `DATABASE_URL` and a private `DATABASE_ADMIN_TOKEN` of at least 24 characters are configured:
+Click **Open admin page** on the stock dashboard to open the separate **Database administration** page at `/admin`. Price charts and company search stay on the main page. Use **Back to Stock Explorer** to return; the selected ticker is preserved within the same session. Opening the admin page does not request market data, run forecasts, or automatically delete anything.
+
+The admin controls are locked unless both `DATABASE_URL` and a private `DATABASE_ADMIN_TOKEN` of at least 24 characters are configured:
 
 ```toml
 DATABASE_ADMIN_TOKEN = "a strong unique administrator password of at least 24 characters"

@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import os
 import time
+from contextlib import nullcontext
 from datetime import date
 import streamlit as st
 
@@ -26,8 +27,8 @@ def authorized():
                                     hashlib.sha256((secret + '\0' + setting('DATABASE_URL')).encode()).hexdigest()))
 
 
-def render_cleanup(catalog):
-    with st.expander('Delete saved database data'):
+def render_cleanup(catalog, *, standalone=False):
+    with nullcontext() if standalone else st.expander('Delete saved database data'):
         secret = setting('DATABASE_ADMIN_TOKEN')
         database_url = setting('DATABASE_URL')
         if len(secret) < 24 or not database_url:

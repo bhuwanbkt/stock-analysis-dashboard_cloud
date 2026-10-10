@@ -3,6 +3,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 from streamlit.testing.v1 import AppTest
+from streamlit.runtime.pages_manager import PagesManager
 
 
 def prices():
@@ -102,3 +103,42 @@ def test_company_url_restores_selection_after_restart():
         assert element(at.selectbox,'Search a company').value=='SONY'
         assert at.query_params['symbol']==['SONY']
         assert any('Saved in shared Postgres' in item.value for item in at.caption)
+
+
+def test_admin_button_opens_separate_page_and_returns_to_selected_stock():
+    app=Path(__file__).resolve().parents[1]/'dashboard'/'app.py'
+    packet={'prices':prices(),'fetched_at':'2026-10-09T23:00:00+00:00'}
+    with patch('dashboard.market.get_history',return_value=packet) as history, \
+         patch('dashboard.storage.saved_catalog',return_value={}), \
+         patch('dashboard.database_admin.setting',return_value=''), \
+         patch('etl.cleanup.list_price_tables') as listing, \
+         patch.object(PagesManager, 'uses_pages_directory', True):
+        at=AppTest.from_file(str(app)).run(timeout=30)
+        assert not at.exception
+        assert not any(row.label=='Delete saved database data' for row in at.expander)
+        element(at.selectbox,'Search a company').set_value('MSFT').run()
+        before=history.call_count
+        element(at.button,'Open admin page').click().run()
+        assert not at.exception
+        assert any(row.value=='Database administration' for row in at.title)
+        assert not any(row.label=='Search a company' for row in at.selectbox)
+        assert history.call_count==before
+        listing.assert_not_called()
+        element(at.button,'Back to Stock Explorer').click().run(timeout=30)
+        assert not at.exception
+        assert element(at.selectbox,'Search a company').value=='MSFT'
+
+
+def test_direct_admin_page_is_password_protected_and_does_not_load_prices():
+    app=Path(__file__).resolve().parents[1]/'dashboard'/'app.py'
+    settings={'DATABASE_URL':'postgresql://placeholder','DATABASE_ADMIN_TOKEN':'test-only-password-over-24-characters'}
+    with patch('dashboard.database_admin.setting',side_effect=lambda key:settings.get(key,'')), \
+         patch('dashboard.market.get_history') as history, \
+         patch('etl.cleanup.list_price_tables') as listing, \
+         patch('etl.cleanup.delete_price_rows') as delete, \
+         patch.object(PagesManager, 'uses_pages_directory', True):
+        at=AppTest.from_file(str(app)).switch_page('pages/admin.py').run(timeout=30)
+        assert not at.exception
+        assert any(row.value=='Database administration' for row in at.title)
+        assert element(at.text_input,'Database administrator password').proto.type==1
+        history.assert_not_called();listing.assert_not_called();delete.assert_not_called()
