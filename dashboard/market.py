@@ -140,7 +140,7 @@ def completed_forecast_prices(prices, now=None):
     return prices.loc[dates + pd.Timedelta(hours=36) <= now.tz_localize(None)].copy()
 
 
-def get_forecast(symbol, prices, horizon, model_version='three-model-v3'):
+def get_forecast(symbol, prices, horizon, model_version='three-model-v4'):
     # Time eligibility must be evaluated outside the cached function: a bar can
     # become eligible while the downloaded price frame itself remains unchanged.
     eligible = completed_forecast_prices(prices)
@@ -154,8 +154,8 @@ def get_forecast(symbol, prices, horizon, model_version='three-model-v3'):
 def _get_forecast(symbol, prices, horizon, model_version):
     from dashboard.forecast import forecast
     symbol = normalize_symbol(symbol)
-    if not isinstance(horizon, int) or not 1 <= horizon <= 30:
-        raise ValueError('Horizon must be 1–30 trading sessions.')
+    if not isinstance(horizon, int) or not 1 <= horizon <= 504:
+        raise ValueError('Choose between 1 and 504 trading days.')
     canonical = prices[['Date', 'Close', 'Volume']].copy().sort_values('Date').reset_index(drop=True)
     canonical['Date'] = pd.to_datetime(canonical.Date).dt.strftime('%Y-%m-%d')
     fingerprint = hashlib.sha256(canonical.to_csv(index=False, float_format='%.17g').encode()).hexdigest()

@@ -242,9 +242,15 @@ def main():
     else:
         st.subheader('Estimate a future price')
         st.caption('An experimental estimate based on past prices. The actual future price can be different.')
-        horizon=st.selectbox('How many market trading days ahead?', [1,5,7,10,20,30], index=2,
-                            format_func=lambda n: f"{n} trading day{'s' if n != 1 else ''}",
+        period_labels={1:'1 trading day',5:'1 week · about 5 trading days',7:'7 trading days',
+                       10:'2 weeks · about 10 trading days',20:'20 trading days',21:'1 month · about 21 trading days',
+                       30:'30 trading days',42:'2 months · about 42 trading days',63:'3 months · about 63 trading days',
+                       126:'6 months · about 126 trading days',252:'1 year · about 252 trading days',
+                       504:'2 years · about 504 trading days'}
+        horizon=st.selectbox('How far ahead would you like to estimate?', list(period_labels), index=2,
+                            format_func=period_labels.get,
                             help='Count days when this stock market trades. Weekends and market holidays do not count. The count starts from the price date used by the estimate.')
+        st.caption('Month and year choices are approximate trading-day counts, not exact calendar dates. Longer estimates may be unavailable when there is too little history to test them safely.')
         st.caption('5 trading days is usually about one calendar week. For a typical weekday market, five days after Monday is the following Monday, if there are no holidays.')
         st.caption('We use older daily prices to avoid a trading day that is still in progress. The starting date may be earlier than the latest date on the chart.')
         if st.button('Calculate price estimate') and cooldown('forecast',20):
