@@ -21,7 +21,7 @@ def element(items,label):
 def test_browsing_custom_ticker_and_button_only_forecast():
     app=Path(__file__).resolve().parents[1]/'dashboard'/'app.py'
     packet={'prices':prices(),'fetched_at':'2026-10-09T23:00:00+00:00'}
-    result={'available':True,'predicted_price':100,'predicted_return':0,'model':'Unchanged-price baseline',
+    result={'available':True,'predicted_price':102,'predicted_return':.02,'model':'Ridge regression','beats_baseline_on_holdout':True,
             'mae_pct':3,'baseline_mae_pct':3,'test_rows':80,'training_rows':470,'as_of':'2025-12-12'}
     with patch('dashboard.market.get_history',return_value=packet) as download, \
          patch('dashboard.market.get_profile') as profile, \
@@ -38,15 +38,15 @@ def test_browsing_custom_ticker_and_button_only_forecast():
         model.assert_not_called()
         choices=element(at.selectbox,'How far ahead would you like to estimate?').options
         assert '1 month · about 21 trading days' in choices
-        assert '1 year · about 252 trading days' in choices
-        assert '2 years · about 504 trading days' in choices
+        assert '3 months · about 63 trading days' in choices
+        assert not any('year' in label or '6 months' in label for label in choices)
         element(at.button,'Calculate price estimate').click().run(timeout=30)
         assert not at.exception
         model.assert_called_once()
-        assert any('does not mean the stock will stay' in item.value for item in at.info)
+        assert any('beat the no-change benchmark' in item.value for item in at.markdown)
         assert any('not how accurate' in item.value for item in at.markdown)
         estimate=next(item for item in at.metric if item.label=='Estimated price after 7 trading days')
-        assert estimate.delta=='+0.00% change from starting price'
+        assert estimate.delta=='+2.00% change from starting price'
         assert any('Starting price date: 2025-12-12' in item.value for item in at.caption)
         element(at.text_input,'Enter an additional ticker').set_value('cost')
         element(at.button,'Look up ticker').click().run()
@@ -55,6 +55,22 @@ def test_browsing_custom_ticker_and_button_only_forecast():
         assert 'COST' in at.session_state['custom_companies']
         assert any(call.args[0]=='COST' for call in download.call_args_list)
         db.assert_not_called()
+
+
+def test_rejected_and_legacy_baseline_results_do_not_show_a_prediction():
+    app=Path(__file__).resolve().parents[1]/'dashboard'/'app.py'
+    packet={'prices':prices(),'fetched_at':'2026-10-09T23:00:00+00:00'}
+    cases=[{'available':False,'reason':'No model passed our prediction check.'},
+           {'available':True,'model':'Unchanged-price baseline','predicted_price':100,'predicted_return':0}]
+    for result in cases:
+        with patch('dashboard.market.get_history',return_value=packet), \
+             patch('dashboard.market.get_forecast',return_value=result):
+            at=AppTest.from_file(str(app)).run(timeout=30)
+            element(at.radio,'View').set_value('Price estimate').run()
+            element(at.button,'Calculate price estimate').click().run(timeout=30)
+            assert not at.exception
+            assert any('No model passed' in row.value for row in at.info)
+            assert not any('Estimated price after' in row.label for row in at.metric)
 
 
 def test_comparison_button_and_invalid_symbol():

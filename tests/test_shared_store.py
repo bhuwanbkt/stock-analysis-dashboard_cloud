@@ -122,7 +122,7 @@ def test_weekly_cleanup_bounds_and_keeps_legacy_tables(repo):
     with repo.transaction() as conn:
         conn.execute(text('CREATE TABLE aapl (id INTEGER)'))
         conn.execute(text('INSERT INTO aapl VALUES (1)'))
-        conn.execute(insert(prices).values(symbol='AAPL',Date=pd.Timestamp('2024-10-09').date(),
+        conn.execute(insert(prices).values(symbol='AAPL',Date=pd.Timestamp('2021-10-09').date(),
             Open=1,High=1,Low=1,Close=1,Volume=1))
         conn.execute(insert(forecasts).values(symbol='AAPL',as_of=pd.Timestamp('2026-01-01').date(),horizon=1,
             model_version='v0',created_at=NOW-timedelta(days=91),result='{}'))
@@ -150,7 +150,7 @@ def test_cleanup_failure_rolls_back_and_does_not_advance_timestamp(repo):
 
 def packet(stale=False):
     return {'prices':frame(),'fetched_at':NOW.isoformat(),'downloaded_rows':4,
-            'period':'2y','source':'Postgres','persisted':True,'stale':stale}
+            'period':'5y','source':'Postgres','persisted':True,'stale':stale}
 
 
 def test_fresh_database_prices_skip_provider_and_survive_memory_reset():
@@ -176,13 +176,16 @@ def test_stale_database_fallback_and_refresh_coordination(state):
     get_history.clear()
 
 
-def test_five_year_download_never_saves_extra_history():
+def test_five_year_download_is_saved_and_shared_between_chart_periods():
     get_history.clear()
-    with patch('dashboard.market.get_store') as db,patch('dashboard.market.yf.Ticker') as api:
+    db=MagicMock();db.read_history.return_value=None;db.claim_refresh.return_value=('claimed','token')
+    db.finish_refresh.return_value=True
+    with patch('dashboard.market.get_store',return_value=db),patch('dashboard.market.yf.Ticker') as api:
         api.return_value.history.return_value=frame().set_index('Date')
         result=get_history('AAPL','5y')
-        assert not result['persisted'] and result['period']=='5y'
-        db.assert_not_called()
+        assert result['persisted'] and result['period']=='5y'
+        db.finish_refresh.assert_called_once()
+        assert api.return_value.history.call_args.kwargs['period']=='5y'
     get_history.clear()
 
 
@@ -199,11 +202,63 @@ def test_write_failure_keeps_valid_prices_visible():
 
 
 def test_price_rows_have_hard_bound_even_with_every_calendar_day(repo):
-    data=frame('2024-11-01',700)
-    data['Date']=pd.date_range('2024-11-01',periods=700)
+    data=frame('2021-11-01',1700)
+    data['Date']=pd.date_range('2021-11-01',periods=1700)
     save(repo,data=data)
-    assert count(repo,prices)==600
-    assert repo.read_history('AAPL',NOW)['prices'].Date.iloc[0]==data.Date.iloc[-600]
+    assert count(repo,prices)==1500
+    assert repo.read_history('AAPL',NOW)['prices'].Date.iloc[0]==data.Date.iloc[-1500]
+
+
+def test_existing_two_year_snapshot_refreshes_once_to_five_years(repo):
+    save(repo)
+    with repo.transaction() as conn:
+        conn.execute(maintenance.delete().where(maintenance.c.key=='history5y:AAPL'))
+    # A recently saved legacy snapshot must not be accepted as a fresh five-year download.
+    assert repo.read_history('AAPL',NOW)['stale']
+    state,token=repo.claim_refresh('AAPL',NOW)
+    assert state=='claimed'
+    expanded=frame('2021-10-11',1250)
+    assert repo.finish_refresh('AAPL',expanded,len(expanded),token,NOW)
+    saved=repo.read_history('AAPL',NOW)
+    assert not saved['stale'] and len(saved['prices'])==1250
+    assert saved['prices'].Date.iloc[0].year==2021
+    assert repo.claim_refresh('AAPL',NOW)[0]=='fresh'
+
+
+def test_new_listing_short_history_does_not_repeat_upgrade(repo):
+    save(repo,data=frame())
+    assert not repo.read_history('AAPL',NOW)['stale']
+    assert repo.claim_refresh('AAPL',NOW)[0]=='fresh'
+
+
+def test_weekly_cleanup_keeps_five_year_history_and_removes_older_rows(repo):
+    save(repo)
+    with repo.transaction() as conn:
+        for date in ['2021-10-09','2021-10-10','2023-01-01']:
+            conn.execute(insert(prices).values(symbol='AAPL',Date=pd.Timestamp(date).date(),
+                Open=1,High=1,Low=1,Close=1,Volume=1))
+    repo.maintain(NOW)
+    saved=repo.read_history('AAPL',NOW)['prices']
+    assert saved.Date.min()==pd.Timestamp('2021-10-10')
+    assert len(saved)==6
+
+
+def test_forecast_uses_five_year_input_and_rejected_check_is_not_saved():
+    from dashboard.market import get_forecast
+    data=frame('2021-10-11',1250)
+    result={'available':False,'reason':'No model passed our prediction check.'}
+    db=MagicMock();db.read_forecast.return_value=None
+    with patch('dashboard.market.get_store',return_value=db), \
+         patch('dashboard.market.completed_forecast_prices',side_effect=lambda p:p.copy()), \
+         patch('dashboard.forecast.forecast',return_value=result) as calculate:
+        get_forecast.clear()
+        actual=get_forecast('AAPL',data,42)
+        assert len(calculate.call_args.args[0])==1250
+        assert not actual['available'] and not actual['tracking_saved']
+        db.record_forecast.assert_not_called()
+        get_forecast('AAPL',data,42)
+        assert calculate.call_count==1
+    get_forecast.clear()
 
 
 def test_profile_fresh_reuse_and_failed_refresh_preserves_previous():

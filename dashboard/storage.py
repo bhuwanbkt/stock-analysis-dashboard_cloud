@@ -5,7 +5,7 @@ from dashboard.database_admin import setting
 
 
 @st.cache_resource
-def _store(database_url, store_version='forecast-reuse-v3'):
+def _store(database_url, store_version='five-year-history-v4'):
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
     from etl.shared_store import SharedStore
