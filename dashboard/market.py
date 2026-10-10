@@ -67,11 +67,11 @@ def stale_packet(packet, reason):
 
 
 @st.cache_data(ttl=14400, max_entries=48, show_spinner=False)
-def get_history(symbol, period='2y'):
+def get_history(symbol, period='5y'):
     symbol = normalize_symbol(symbol)
-    if period not in ('2y', '5y'):
-        raise ValueError('Only bounded two-year and five-year downloads are supported.')
-    repo = get_store() if period == '2y' else None
+    if period != '5y':
+        raise ValueError('Only bounded five-year downloads are supported.')
+    repo = get_store()
     saved, token, claim = None, None, None
     try:
         if repo:
@@ -116,8 +116,6 @@ def get_history(symbol, period='2y'):
                 packet['notice'] = 'Database save unavailable. Prices are available in memory.'
         elif claim == 'capacity':
             packet['notice'] = 'Shared storage is at its company limit. This stock is available in memory only.'
-        elif period == '5y':
-            packet['notice'] = 'Five-year history is kept in memory only.'
         else:
             packet['notice'] = 'Shared storage is unavailable or unconfigured. Prices are available in memory only.'
         return packet
@@ -140,13 +138,13 @@ def completed_forecast_prices(prices, now=None):
     return prices.loc[dates + pd.Timedelta(hours=36) <= now.tz_localize(None)].copy()
 
 
-def get_forecast(symbol, prices, horizon, model_version='three-model-v4'):
+def get_forecast(symbol, prices, horizon, model_version='three-model-v5-gated'):
     # Time eligibility must be evaluated outside the cached function: a bar can
     # become eligible while the downloaded price frame itself remains unchanged.
     eligible = completed_forecast_prices(prices)
     if eligible.empty:
         return {'available': False, 'reason': 'No daily bars have passed the forecast completion buffer yet.'}
-    cutoff = eligible.Date.iloc[-1] - pd.DateOffset(years=2)
+    cutoff = eligible.Date.iloc[-1] - pd.DateOffset(years=5)
     return _get_forecast(symbol, eligible.loc[eligible.Date >= cutoff].copy(), horizon, model_version)
 
 
@@ -154,8 +152,8 @@ def get_forecast(symbol, prices, horizon, model_version='three-model-v4'):
 def _get_forecast(symbol, prices, horizon, model_version):
     from dashboard.forecast import forecast
     symbol = normalize_symbol(symbol)
-    if not isinstance(horizon, int) or not 1 <= horizon <= 504:
-        raise ValueError('Choose between 1 and 504 trading days.')
+    if not isinstance(horizon, int) or not 1 <= horizon <= 63:
+        raise ValueError('Choose between 1 and 63 trading days (up to about three months).')
     canonical = prices[['Date', 'Close', 'Volume']].copy().sort_values('Date').reset_index(drop=True)
     canonical['Date'] = pd.to_datetime(canonical.Date).dt.strftime('%Y-%m-%d')
     fingerprint = hashlib.sha256(canonical.to_csv(index=False, float_format='%.17g').encode()).hexdigest()

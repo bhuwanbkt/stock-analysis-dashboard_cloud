@@ -16,17 +16,23 @@ def history(n=510):
 
 
 @pytest.mark.parametrize('horizon', [1, 7, 30, 42, 63])
-def test_forecast_no_label_leakage_and_latest_inference(horizon):
-    data = history()
+@pytest.mark.parametrize('rows', [510, 1260])
+def test_forecast_no_label_leakage_and_latest_inference(horizon, rows):
+    data = history(rows)
     result = forecast(data, horizon)
-    assert result['available']
     assert result['train_last_origin'] + horizon < result['test_first_origin']
     for fold in result['fold_ranges']:
         assert fold['train_last'] + horizon < fold['valid_first']
     assert result['latest_feature_origin'] == len(data) - 1
     assert result['as_of'] == str(data.Date.iloc[-1])
-    assert np.isfinite(result['predicted_price'])
-    assert result['predicted_price'] > 0
+    assert result['test_rows'] >= horizon
+    if result['available']:
+        assert result['model'] != 'Unchanged-price baseline'
+        assert result['beats_baseline_on_holdout']
+        assert np.isfinite(result['predicted_price']) and result['predicted_price'] > 0
+    else:
+        assert 'predicted_price' not in result and 'predicted_return' not in result
+        assert result['status'] == 'rejected'
     assert result['mae_pct'] >= 0
 
 
@@ -70,7 +76,9 @@ def test_constant_prices_select_unchanged_baseline():
     data['Close'] = 100.0
     result = forecast(data)
     assert result['model'] == 'Unchanged-price baseline'
-    assert result['predicted_price'] == 100.0
+    assert not result['available']
+    assert 'predicted_price' not in result
+    assert 'No model passed' in result['reason']
     assert result['mae_pct'] == 0.0
     assert result['direction_accuracy'] is None
 
@@ -91,6 +99,7 @@ def test_holdout_does_not_choose_the_method():
         'Gradient boosting': lambda: Constant(.04)}):
         result = forecast(data, 7)
     assert result['model'] == 'Unchanged-price baseline'
+    assert not result['available'] and 'predicted_price' not in result
     assert next(row for row in result['validation_scores'] if row['selected'])['mae_pct'] == 0
     target = data.Close.shift(-7) / data.Close - 1
     test_targets = target.loc[result['test_first_origin']:].dropna()
@@ -136,8 +145,23 @@ def test_ridge_scaler_fits_each_training_window():
     assert all(np.allclose(mean, 0, atol=1e-7) for mean in means)
 
 
-@pytest.mark.parametrize('horizon',[126,252,504])
-def test_long_horizons_explain_insufficient_history(horizon):
-    result=forecast(history(),horizon)
-    assert not result['available']
-    assert 'Choose a shorter period' in result['reason']
+@pytest.mark.parametrize('horizon',[64,126,252,504])
+def test_horizons_beyond_three_months_are_rejected(horizon):
+    with pytest.raises(ValueError, match='1 and 63'):
+        forecast(history(1260),horizon)
+
+
+def test_development_winner_failing_recent_check_is_not_refit_or_shown():
+    data=history()
+    data['Close']=100*np.exp(np.minimum(np.arange(len(data)),420)*.001)
+    fits=[]
+    class Constant:
+        def fit(self,X,y): fits.append(len(X)); return self
+        def predict(self,X): return np.full(len(X),np.exp(.007)-1)
+    with patch('dashboard.forecast.model_factories',return_value={'Ridge regression':Constant}):
+        result=forecast(data,7)
+    assert result['model']=='Ridge regression'
+    assert not result['available'] and not result['beats_baseline_on_holdout']
+    assert 'separate recent test' in result['reason']
+    assert len(fits)==4  # Three development folds and the holdout check; no inference refit.
+    assert 'predicted_price' not in result and 'predicted_return' not in result

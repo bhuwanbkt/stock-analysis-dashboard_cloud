@@ -11,6 +11,8 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 MAX_COMPANIES = 50
 MAX_FORECASTS = 5000
+HISTORY_YEARS = 5
+MAX_PRICE_ROWS = 1500
 metadata = MetaData()
 companies = Table('stock_companies', metadata,
     Column('symbol', String(15), primary_key=True), Column('profile', Text, nullable=False),
@@ -39,7 +41,7 @@ def utc(value):
 
 
 def cutoff_date(now):
-    return (pd.Timestamp(now) - pd.DateOffset(years=2)).date()
+    return (pd.Timestamp(now) - pd.DateOffset(years=HISTORY_YEARS)).date()
 
 
 class SharedStore:
@@ -84,6 +86,7 @@ class SharedStore:
         now = now or datetime.now(timezone.utc)
         with self.transaction() as conn:
             state = conn.execute(select(refresh).where(refresh.c.symbol == symbol)).mappings().first()
+            expanded = conn.scalar(select(maintenance.c.last_run).where(maintenance.c.key == 'history5y:' + symbol))
             rows = conn.execute(select(prices).where(prices.c.symbol == symbol,
                                 prices.c.Date >= cutoff_date(now)).order_by(prices.c.Date)).mappings().all()
         if not rows or not state or not state['fetched_at']: return None
@@ -91,8 +94,9 @@ class SharedStore:
         frame['Date'] = pd.to_datetime(frame['Date'])
         fetched = utc(state['fetched_at'])
         return {'prices':frame,'fetched_at':fetched.isoformat(),
-                'downloaded_rows':state['downloaded_rows'], 'period':'2y',
-                'source':'Postgres', 'persisted':True, 'stale': now-fetched >= timedelta(hours=24),
+                'downloaded_rows':state['downloaded_rows'], 'period':'5y',
+                'source':'Postgres', 'persisted':True,
+                'stale': now-fetched >= timedelta(hours=24) or utc(expanded) != fetched,
                 'retry_after':utc(state['retry_after'])}
 
     def claim_refresh(self, symbol, now=None):
@@ -113,7 +117,8 @@ class SharedStore:
             if utc(row['lease_until']) and utc(row['lease_until']) > now: return ('busy',None)
             if utc(row['retry_after']) and utc(row['retry_after']) > now: return ('backoff',None)
             # Another request may have refreshed between read_history and claiming this row.
-            if utc(row['fetched_at']) and now-utc(row['fetched_at']) < timedelta(hours=24):
+            expanded = conn.scalar(select(maintenance.c.last_run).where(maintenance.c.key == 'history5y:' + symbol))
+            if utc(row['fetched_at']) and utc(expanded) == utc(row['fetched_at']) and now-utc(row['fetched_at']) < timedelta(hours=24):
                 if conn.scalar(select(func.count()).select_from(prices).where(prices.c.symbol == symbol,
                                prices.c.Date >= cutoff_date(now))) >= 2: return ('fresh',None)
             token=str(uuid.uuid4())
@@ -123,7 +128,7 @@ class SharedStore:
 
     def finish_refresh(self, symbol, frame, downloaded_rows, token, now=None):
         now = now or datetime.now(timezone.utc)
-        selected = frame.loc[frame.Date >= pd.Timestamp(cutoff_date(now))].tail(600)
+        selected = frame.loc[frame.Date >= pd.Timestamp(cutoff_date(now))].tail(MAX_PRICE_ROWS)
         if len(selected) < 2:
             self.fail_refresh(symbol,token,now)
             return False
@@ -136,7 +141,7 @@ class SharedStore:
             if not self.ensure_company(conn,symbol,now):
                 conn.execute(update(refresh).where(refresh.c.symbol == symbol).values(lease_until=None,lease_token=None))
                 return False
-            # Daily downloads refresh the full two-year window so corporate-action revisions replace old values.
+            # Refresh the full five-year window so corporate-action revisions replace old values.
             if records:
                 stmt = self.insert(prices).values(records)
                 conn.execute(stmt.on_conflict_do_update(index_elements=['symbol','Date'],
@@ -146,6 +151,10 @@ class SharedStore:
             conn.execute(delete(prices).where(prices.c.symbol == symbol, prices.c.Date.not_in([r['Date'] for r in records])))
             conn.execute(update(refresh).where(refresh.c.symbol == symbol).values(
                 fetched_at=now, downloaded_rows=downloaded_rows, lease_until=None, lease_token=None,retry_after=None))
+            # Existing two-year snapshots must refresh once, even if downloaded recently.
+            # This bounded marker also supports newer companies with less than five years of data.
+            marker = self.insert(maintenance).values(key='history5y:' + symbol, last_run=now)
+            conn.execute(marker.on_conflict_do_update(index_elements=['key'], set_={'last_run': now}))
             self.evaluate_forecasts(conn, symbol, selected, now)
             return True
 
@@ -200,7 +209,8 @@ class SharedStore:
                 from sqlalchemy import text
                 size = conn.scalar(text('SELECT pg_database_size(current_database())'))
         return {**counts, 'last_cleanup': utc(last), 'last_refresh': utc(latest),
-                'database_bytes': size, 'company_limit': MAX_COMPANIES, 'forecast_limit': MAX_FORECASTS}
+                'database_bytes': size, 'company_limit': MAX_COMPANIES, 'forecast_limit': MAX_FORECASTS,
+                'price_rows_per_company_limit': MAX_PRICE_ROWS, 'history_years': HISTORY_YEARS}
 
     def record_forecast(self, symbol, result, version, now=None):
         if not result.get('available'): return False
