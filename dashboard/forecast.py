@@ -45,24 +45,32 @@ def model_factories():
 
 
 def forecast(df, horizon=7):
-    if not isinstance(horizon, int) or not 1 <= horizon <= 30:
-        raise ValueError('Horizon must be 1–30 trading sessions.')
+    if not isinstance(horizon, int) or not 1 <= horizon <= 504:
+        raise ValueError('Choose between 1 and 504 trading days.')
     frame, features = prepare_features(df)
     target = frame.Close.shift(-horizon) / frame.Close - 1
     mask = features.notna().all(axis=1) & target.notna()
     X, y = features.loc[mask], target.loc[mask]
     if len(X) < 250 or features.iloc[-1].isna().any():
-        return {'available': False, 'reason': 'At least 250 usable history rows and valid latest features are needed.'}
+        return {'available': False, 'reason': 'There is not enough historical data for this time period. We need at least 250 examples with known later prices. Choose a shorter period; no extra history is downloaded automatically.'}
     holdout_size = max(40, len(X) // 5)
     split = len(X) - holdout_size
     dev_X, dev_y = X.iloc[:split-horizon], y.iloc[:split-horizon]
     test_X, test_y = X.iloc[split:], y.iloc[split:]
+    # Long horizons need wider initial training windows while preserving three purged folds.
+    splitter = TimeSeriesSplit(n_splits=3, gap=horizon)
+    initial_train = len(dev_X) - 3 * (len(dev_X)//4) - horizon
+    if initial_train < 50:
+        test_size = max(20, len(dev_X)//6)
+        if len(dev_X) - 3*test_size - horizon < 50:
+            return {'available': False, 'reason': 'There is not enough historical data to safely test this longer estimate. Choose a shorter period. The app keeps two years of forecast history and does not automatically download more.'}
+        splitter = TimeSeriesSplit(n_splits=3, gap=horizon, test_size=test_size)
     # Select on development folds only. Purge labels spanning the next test origin.
     baseline = 'Unchanged-price baseline'
     factories = model_factories()
     errors = {name: [] for name in [baseline, *factories]}
     fold_ranges = []
-    for train, valid in TimeSeriesSplit(n_splits=3, gap=horizon).split(dev_X):
+    for train, valid in splitter.split(dev_X):
         errors[baseline].extend(np.abs(dev_y.iloc[valid]))
         for name, factory in factories.items():
             model = factory().fit(dev_X.iloc[train], dev_y.iloc[train])

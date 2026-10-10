@@ -15,7 +15,7 @@ def history(n=510):
                          'Volume': rng.integers(100000, 200000, n)})
 
 
-@pytest.mark.parametrize('horizon', [1, 7, 30])
+@pytest.mark.parametrize('horizon', [1, 7, 30, 42, 63])
 def test_forecast_no_label_leakage_and_latest_inference(horizon):
     data = history()
     result = forecast(data, horizon)
@@ -134,3 +134,10 @@ def test_ridge_scaler_fits_each_training_window():
         forecast(history(), 7)
     assert len(means) >= 3
     assert all(np.allclose(mean, 0, atol=1e-7) for mean in means)
+
+
+@pytest.mark.parametrize('horizon',[126,252,504])
+def test_long_horizons_explain_insufficient_history(horizon):
+    result=forecast(history(),horizon)
+    assert not result['available']
+    assert 'Choose a shorter period' in result['reason']

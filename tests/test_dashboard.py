@@ -36,6 +36,10 @@ def test_browsing_custom_ticker_and_button_only_forecast():
         assert any('MSFT' in h.value for h in at.subheader)
         element(at.radio,'View').set_value('Price estimate').run()
         model.assert_not_called()
+        choices=element(at.selectbox,'How far ahead would you like to estimate?').options
+        assert '1 month · about 21 trading days' in choices
+        assert '1 year · about 252 trading days' in choices
+        assert '2 years · about 504 trading days' in choices
         element(at.button,'Calculate price estimate').click().run(timeout=30)
         assert not at.exception
         model.assert_called_once()
