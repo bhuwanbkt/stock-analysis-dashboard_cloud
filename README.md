@@ -67,7 +67,30 @@ The admin controls are locked unless both `DATABASE_URL` and a private `DATABASE
 DATABASE_ADMIN_TOKEN = "a strong unique administrator password of at least 24 characters"
 ```
 
-Sign in, click **Refresh saved price tables**, select tables, and choose **Rows before a date** or **All rows (old and new)**. The cutoff date itself is kept. Type `DELETE` and tick the confirmation before submitting. Access expires after 15 minutes and can be locked manually; changed credentials invalidate the session.
+#### One-time administrator setup
+
+`DATABASE_ADMIN_TOKEN` is a private password you create yourself; it is not issued by Neon or Streamlit and is separate from your database password. On macOS, open Terminal and generate it with:
+
+```bash
+openssl rand -hex 32
+```
+
+This prints a random 64-character value. Save it in your password manager, then add it as the value of `DATABASE_ADMIN_TOKEN` in **Streamlit Cloud → your app → Settings → Secrets**, and click **Save**. Keep the existing `DATABASE_URL` if it is already configured. Do not paste either secret into chat, screenshots, or GitHub.
+
+This setup is one-time: Streamlit retains the secrets across app sleep and restart. The administrator password is only needed for manual cleanup; automatic shared storage and weekly retention use `DATABASE_URL`. If the administrator token is missing, manual cleanup stays locked.
+
+#### Open the admin page and delete selected prices
+
+1. Click **Open admin page** on the stock dashboard, or open [Database administration](https://stock-analysis-dashboardcloud-ga4trnosdubt58eqgynqtk.streamlit.app/admin) directly.
+2. Enter the generated token value in **Database administrator password**, then click **Unlock database cleanup**.
+3. Click **Refresh saved price tables** to list eligible tables.
+4. Select **Saved price tables** and choose **Rows before a date** or **All rows (old and new)**. For date-based deletion, rows on the selected cutoff date are kept.
+5. Type `DELETE` in **Type DELETE to confirm**, tick the permanent-deletion confirmation, and click **Delete selected saved rows**.
+6. Check the reported deletion counts. Use **Lock database cleanup** to end administrator access, or **Back to Stock Explorer** to return to the dashboard.
+
+Unlocking expires after 15 minutes; enter the same password again afterward. Closing or restarting the app can also end the session. Changing the configured password invalidates existing administrator access. There is no need to generate a new password each time.
+
+The stock dashboard and administrator page use explicit Streamlit page registration, so the navigation works when an already running app receives an update. The administrator page contains the login and cleanup controls; company search and charts stay on the dashboard.
 
 Eligible tables must have Date/Open/High/Low/Close/Volume columns and be `stock_daily_prices`, a known legacy ticker table, `stocks`, or a `prices_<12-character hash>` export. Other exact legacy names can be configured in `DATABASE_LEGACY_STOCK_TABLES` as a comma-separated list. Unrelated tables are excluded. The backend rechecks scope, quotes identifiers, binds dates, locks selected tables briefly, and blocks incoming foreign keys or custom triggers. It keeps table structures and rolls back the transaction on failure.
 
