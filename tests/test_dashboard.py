@@ -112,7 +112,7 @@ def test_admin_button_opens_separate_page_and_returns_to_selected_stock():
          patch('dashboard.storage.saved_catalog',return_value={}), \
          patch('dashboard.database_admin.setting',return_value=''), \
          patch('etl.cleanup.list_price_tables') as listing, \
-         patch.object(PagesManager, 'uses_pages_directory', True):
+         patch.object(PagesManager, 'uses_pages_directory', False):
         at=AppTest.from_file(str(app)).run(timeout=30)
         assert not at.exception
         assert not any(row.label=='Delete saved database data' for row in at.expander)
@@ -136,7 +136,7 @@ def test_direct_admin_page_is_password_protected_and_does_not_load_prices():
          patch('dashboard.market.get_history') as history, \
          patch('etl.cleanup.list_price_tables') as listing, \
          patch('etl.cleanup.delete_price_rows') as delete, \
-         patch.object(PagesManager, 'uses_pages_directory', True):
+         patch.object(PagesManager, 'uses_pages_directory', False):
         at=AppTest.from_file(str(app)).switch_page('pages/admin.py').run(timeout=30)
         assert not at.exception
         assert any(row.value=='Database administration' for row in at.title)
