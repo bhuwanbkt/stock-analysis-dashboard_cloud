@@ -118,7 +118,9 @@ def test_admin_button_opens_separate_page_and_returns_to_selected_stock():
         assert not any(row.label=='Delete saved database data' for row in at.expander)
         element(at.selectbox,'Search a company').set_value('MSFT').run()
         before=history.call_count
-        element(at.button,'Open admin page').click().run()
+        assert at.sidebar.button[0].label=='Open admin page'
+        assert not any(row.label=='Open admin page' for row in at.main.button)
+        element(at.sidebar.button,'Open admin page').click().run()
         assert not at.exception
         assert any(row.value=='Database administration' for row in at.title)
         assert not any(row.label=='Search a company' for row in at.selectbox)

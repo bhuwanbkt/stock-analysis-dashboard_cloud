@@ -64,7 +64,7 @@ def price_chart(frame, kind='Line', averages=False):
 def main():
     st.title('Stock Explorer')
     st.caption('Understand price history, compare companies, and inspect experimental forecasts.')
-    if st.button('Open admin page', icon='🔒'):
+    if st.sidebar.button('Open admin page', icon='🔒', use_container_width=True):
         st.switch_page('pages/admin.py')
     custom = st.session_state.get('custom_companies', {})
     saved = saved_catalog()
