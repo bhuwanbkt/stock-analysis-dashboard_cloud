@@ -1,8 +1,163 @@
 # Stock Explorer
 
-A lightweight Streamlit dashboard for understanding historical stock performance and price risk. Its main views show price changes, price swings, drops from earlier peaks, and company comparisons. Prediction is a secondary experiment, not the main product promise. Optional Neon PostgreSQL storage shares data across visitors and survives app restarts. The app uses one CPU process, no LLM calls, and no separate model server.
+A lightweight stock-analysis dashboard for exploring historical performance, understanding price swings and comparing companies. Prediction is a separate experiment that only shows a result when a learned model passes historical testing.
 
-## Project structure
+The project uses Streamlit, Yahoo Finance through yfinance, pandas, NumPy, Plotly, scikit-learn, SQLAlchemy and optional Neon PostgreSQL. The app runs in one CPU process, without an LLM service or a separate model server.
+
+> This is an educational analysis project. Historical results and experimental predictions do not establish future accuracy or trading profit.
+
+## Key Features
+
+- Searchable company dropdown combining a starter JSON catalog, saved companies and session selections
+- Historical line and candlestick charts with optional moving averages and volume
+- Plain-language explanations of price changes, price variation and drops from earlier peaks
+- Side-by-side company comparisons on shared dates
+- Optional RSI and MACD indicators
+- Button-driven company search and overview requests
+- Five-year daily history reused across chart periods
+- Optional PostgreSQL persistence shared across visitors and app restarts
+- Bounded storage, coordinated refreshes and cleanup during active visits
+- Separate password-protected database administration page
+- Three prediction methods tested against a no-change benchmark
+- Reuse of matching accepted predictions and later comparison with observed prices
+- Offline model-study script, dated results and automated tests
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A["Visitor selects a company"] --> B["Streamlit dashboard"]
+    B --> C{"Price cache available?"}
+    C -->|Yes| H["Historical analysis and charts"]
+    C -->|No| D{"Fresh saved prices available?"}
+    E["Optional PostgreSQL"] --> D
+    D -->|Yes| H
+    D -->|No| F["Download selected stock from Yahoo Finance"]
+    F --> H
+    F -->|Valid snapshot and storage configured| E
+    B -->|Prediction button| G["Historical model testing"]
+    H -->|Eligible completed prices| G
+    G -->|Passes both benchmark checks| I["Experimental estimate"]
+    I -->|Storage configured| E
+```
+
+Saved prices can also provide a clearly labelled fallback when a provider refresh fails. Company overviews, comparisons, predictions and manual administration require their own buttons. Database settings are optional.
+
+## Dashboard Workflow
+
+1. The dropdown combines the starter names in `data/companies.json`, saved database companies, and up to ten additional listings in the current session. Searching this dropdown makes no company-search API call.
+2. The selected stock first uses the shared four-hour memory cache. On a cache miss, the app checks Postgres when configured.
+3. Saved five-year prices downloaded less than 24 hours ago are reused without a provider download. Missing or older prices trigger a download for **that selected stock only**. There is no daily job downloading every saved company.
+4. Valid prices are upserted by ticker and session date, rather than appended repeatedly. Concurrent database requests coordinate through a three-minute refresh lease with a unique token. A completed refresh from an expired worker cannot overwrite a newer worker's results. Failed downloads release the lease and wait five minutes before another database-coordinated attempt.
+5. If the provider fails, existing saved prices remain visible with a warning and the last download time. If no saved prices exist, the app shows a retry message. A provider outage is not proof that a ticker is invalid.
+
+The URL stores the selected ticker, for example `?symbol=SONY`. After sleep or restart, that link restores the selection. A plain link defaults to AAPL. Other session choices and memory caches reset; database records remain. Opening a shared link for an uncached ticker can initiate its normal price download.
+
+Freshness refers to **download age**, not a guarantee of the latest market close. Memory caching can delay the next freshness check by up to four hours. Daily data may be delayed or include an unfinished session. Download time and latest bar date are displayed separately. A stale-data warning provides a manual retry button; the database retry delay still applies.
+
+## Data Storage
+
+The app uses each storage layer for a specific purpose.
+
+| Data | Storage | Purpose |
+| --- | --- | --- |
+| Starter company names and overview fields | `data/companies.json` | Provides dropdown entries without a search request |
+| Recent prices, searches, profiles and failed prediction checks | Bounded Streamlit memory caches | Avoids repeated provider requests and computation while the process is running |
+| Selected ticker | URL query parameter | Restores the company after reopening the link |
+| Temporary selections and administrator unlock | Streamlit session state | Keeps choices and access state for the current session |
+| Company profiles and daily prices | Optional PostgreSQL | Shares saved data across visitors and restarts |
+| Accepted predictions and later observations | Optional PostgreSQL | Reuses results and records later comparisons |
+| Model-study report and diagnostics | Markdown and JSON in `analysis/` | Documents a fixed offline experiment |
+
+### Managed PostgreSQL Tables
+
+Add the following top-level Streamlit secret, or environment setting, to enable persistence:
+
+```toml
+DATABASE_URL = "your Neon PostgreSQL connection URL"
+```
+
+Use the existing database role with permission to create and read/write the app's tables. Keep credentials out of GitHub. On first successful connection, the app creates these additive tables:
+
+| Table | Purpose | Limit or retention |
+| --- | --- | --- |
+| `stock_companies` | Company names and JSON-encoded profiles | At most 50 saved companies |
+| `stock_daily_prices` | Adjusted daily OHLCV, unique `(symbol, Date)` | Rolling five calendar years; at most 1,500 rows per company |
+| `stock_refresh_status` | Last download, lease token, retry state | Saved companies plus bounded transient failed lookups; expired transient rows removed on refresh claims |
+| `stock_forecast_runs` | Forecast result and later observed return | 90 days; hard maximum 5,000 records |
+| `stock_maintenance` | Capacity coordination, weekly cleanup and history-upgrade markers | Two coordination rows plus one marker per saved company (up to 50) |
+
+Typical five-year equity history is around 1,260 daily rows per company, or around 63,000 price rows across 50 companies. The hard price cap is 75,000 rows. Exact storage bytes include profiles, forecasts, indexes, and PostgreSQL overhead; these are row bounds, not a promised database size or provider quota. Existing export tables count toward your Neon usage separately.
+
+At the company limit, new stocks can still be viewed in memory but are not saved, and the UI explains this. The app does not automatically evict saved companies. Unknown tickers with failed history downloads do not become saved companies. Charts and forecasts share the same saved five-year history. Forecasts use at most the latest five years of eligible supplied prices. Newer listings may have less history.
+
+A refresh downloads the complete five-year provider window, rather than only the latest day. This is a deliberate tradeoff: corporate actions can revise previously adjusted prices, so successful refreshes replace values for matching dates and remove dates absent from the current snapshot. Invalid or incomplete responses are not persisted. CSV download is available for the selected chart period.
+
+Connections use `NullPool`, closing client connections after each transaction instead of holding an idle connection open. Database errors fall back to API/memory when possible; fallback data is explicitly labelled and is not guaranteed to survive a restart. A database outage can increase provider calls after cache expiration. Refresh leases coordinate only when shared storage is available; the network and model semaphores apply per app process.
+
+### Retention and Sleeping Apps
+
+Automatic cleanup checks a **database-persisted timestamp**. When seven days have elapsed since the last successful cleanup, an active visit removes prices outside the five-year window and forecast records older than 90 days. Deletes and the timestamp update commit together; a failed cleanup rolls back and does not advance the timestamp. An hourly memory gate avoids checking maintenance on every rerun; a restarted process checks again. A successful price refresh also prunes that ticker immediately.
+
+A sleeping app performs **no downloads, model work, or cleanup**. Its next active visit checks whether cleanup is due and checks prices for the selected stock. Fresh saved data needs no download; stale or missing selected-stock data is downloaded automatically when available. There is no background scheduler inside this app, no polling loop, and no attempt to keep Neon permanently awake. Retention is enforced when the app is active, so unused records can remain past their cutoff during sleep.
+
+These managed tables are separate from previous ticker-named, `stocks`, and `prices_<hash>` export tables. Old exports are not imported or automatically removed. The dashboard no longer exposes the old replace-table export action. Automatic maintenance only deletes rows in `stock_daily_prices` and `stock_forecast_runs`.
+
+
+
+## Company Search and Overviews
+
+Under **Company or ticker not listed?**, **Find companies** searches Yahoo Finance only when clicked, returning up to eight equity listings with exchange labels. News and recommendations are disabled. **Open selected company** validates daily history before saving the company name. A known ticker can be entered directly; symbols are normalized and format-checked before provider use.
+
+**Load company overview** is optional and button-driven. A complete saved database profile is reused for 30 days. After that, the button attempts a provider refresh. Failed or incomplete refreshes preserve the previous overview, which is marked older when returned as fallback. Successful profiles are saved within the company cap and shared through a bounded one-day memory cache. Browsing does not bulk-download missing overviews.
+
+The starter JSON contains 20 companies. To refresh its profiles offline:
+
+```bash
+python scripts/refresh_companies.py --symbols AAPL MSFT
+```
+
+Review and commit successful JSON updates. Failed API refreshes preserve existing saved profiles. Runtime database updates do not modify repository files.
+
+## Performance and Risk Analysis
+
+Overview shows **Price change**, **Daily price variation** (standard deviation of daily percentage changes), and **Largest drop from a peak**. Plain-language help explains each number and its limits. The latest close's distance below the highest close in the selected period distinguishes the current position from the largest historical drop. These use provider-adjusted closing prices and do not calculate an investor's actual profit after cash payments, fees and taxes.
+
+Compare adds a side-by-side price-change, price-variation and peak-drop table calculated on exactly the shared dates used by its chart. Its variation statistic uses changes between consecutive shared dates, which can span more than one trading day when holidays or missing bars differ. Chart controls, saved prices, cleanup and provider request limits remain unchanged. Prediction has moved to **Prediction experiment** and does not run until its button is clicked.
+
+The Indicators view includes RSI and MACD. These describe patterns in historical prices; the app does not turn them into buy or sell recommendations.
+
+## Prediction Pipeline
+
+The dashboard shows period price return, standard deviation of daily returns, maximum drawdown, and summaries computed directly from prices. Comparisons align shared dates and start both series at 0% on their first shared date. Separate views provide line/candlestick charts, optional moving averages, volume, RSI, and MACD. Only the selected view runs; comparison requests require the **Compare stocks** button.
+
+Forecasting can predict an endpoint return over 1–63 observed trading-session bars (up to about three months) using past returns, moving-average distance, volatility, and relative volume. Ridge regression with training-fold standardization, an 80-tree regularized Random Forest, and 60 shallow gradient-boosted trees compete against an unchanged-price baseline in three expanding chronological development folds. Fixed hyperparameters limit computation and overfitting. The baseline wins exact ties; it is a testing benchmark and is never displayed as a new prediction.
+
+All candidates use the same folds and mean absolute return error. Horizon-sized purge gaps prevent training labels from reaching validation or test origins. The best development method is tested on a separate latest holdout with at least as many starting dates as the forecast horizon; test error is reported in percentage points. A learned model must beat the no-change benchmark in both development and the recent holdout. Otherwise the UI says **No model passed our prediction check**, shows testing details on request, and provides no endpoint price or 0% placeholder. The holdout does not choose another model or tune its settings. Only a passing model is refit using known historical labels to estimate the endpoint from the latest unlabelled row. At least 250 usable labelled rows and 50 initial-fold training examples are required. Passing these checks is not proof of statistical significance or future accuracy; overlapping targets are correlated.
+
+Only accepted predictions are persisted. Failed checks remain in the bounded one-day memory cache, avoiding repeated training in the same running process. When persistence is available, a forecast is recorded once per `(symbol, as_of, horizon, model_version)`. Later normal price refreshes evaluate pending forecasts once enough future bars exist. Both observed-return endpoints use the same current adjusted-price basis. **View past estimates** shows up to 30 recent predictions, observed returns, and pending/evaluated status. It does not download extra market data. Missing provider bars can affect the mapping from bar count to actual exchange sessions; forecasts use the conservative completed-bar rule below.
+
+Historical validation and later observations help assess the method; neither guarantees improved future accuracy. Overlapping multi-session targets are correlated. No confidence probability, synthetic daily price path, trading profit, or investment recommendation is claimed. Currency comes from the optional profile; otherwise values are labelled quote units.
+
+### Consumer-Facing Explanations
+
+The **Prediction experiment** view explains model testing in everyday language. A failed check is an experiment result, while Overview and Compare remain useful for historical analysis. **How far ahead would you like to estimate?** counts trading days from the starting price date, excluding weekends and exchange holidays. **Calculate price estimate** runs the existing prediction methods; it adds no provider requests or new models.
+
+The result shows **Estimated price after N trading days**, the starting price and its date, and the estimated percentage change. That percentage is a price change, not an accuracy or confidence score. If no model passes both benchmark checks, no predicted-price card or 0% placeholder is shown. An accepted model may still have a very small return that rounds to 0.00%; this does not imply the actual price will stay unchanged. Accepted results show the recent average testing error beside the estimate. Model comparisons and error definitions are inside **How did we check this estimate?**. **View past estimates** uses readable labels for waiting and completed comparisons. Older saved results remain readable and are marked as predating the current check. New failed checks are not saved as predictions.
+
+
+Estimate periods include days, weeks and 1/2/3 months. Month choices use about 21 trading days per month; these are not exact calendar dates. Six-month and year options have been removed from this resource-limited model. Three chronological folds retain horizon-sized gaps, and smaller validation windows are used if needed to preserve at least 50 initial-fold training examples. An insufficient-history message appears when safe testing is impossible.
+
+### Completed Prices and Result Reuse
+
+Price refreshes still download the full five-year window so historical corporate-action revisions are detected. PostgreSQL inserts missing rows and updates existing OHLCV rows only when a value differs. Unchanged price rows are left untouched; refresh timestamps still advance. Storage remains limited to 50 companies, 1,500 price rows per company and 5,000 forecast records. No background downloads run while Streamlit sleeps.
+
+Forecast input and evaluation use daily bars at least **36 hours after their session-date midnight in UTC**. The app does not yet store exchange calendars or closing times, so this conservative buffer can exclude a completed recent bar and lag the chart. For example, a Friday-dated bar becomes eligible Saturday at 12:00 UTC. The completion filter is evaluated outside the memory cache, allowing eligibility to change without a new price download. This is a safety buffer, not a provider guarantee that bars cannot be revised.
+
+Before training, the app looks for a saved forecast matching the company, eligible final date, horizon, model version, completion policy and fingerprint of all model-input dates, closes and volumes. A matching forecast is reused even after the app restarts. Revised input or a changed version creates a separate record within the existing forecast limit. The UI shows the forecast data date and whether the result was calculated or reused. Existing earlier forecasts remain readable. No schema migration or new package is required.
+
+
+## Project Structure
 
 | Path | Purpose |
 | --- | --- |
@@ -29,11 +184,12 @@ A lightweight Streamlit dashboard for understanding historical stock performance
 
 Start with `dashboard/app.py` when running the app. Follow `dashboard/home.py` for UI behavior and `etl/shared_store.py` for how saved data is managed.
 
-## Installation and local setup
-
-### Requirements
+## Prerequisites
 
 Use Python **3.11 or 3.12**, Git, and an internet connection for market-data downloads. Python 3.12 was used for the project test run; the existing Docker image uses Python 3.11. A database is optional: you can explore stocks without Neon, but data in memory does not survive app restarts. No LLM API key is needed. Docker is only required for the container option below.
+
+## Local Setup
+
 
 ### 1. Get the project
 
@@ -109,7 +265,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 
 On Windows, run that command with `.\.venv\Scripts\python.exe` instead of `python`. Terminal environment settings last for that terminal session; set them again in a new terminal. A `.env` file is **not automatically loaded** by this app. If you choose local Streamlit secrets instead, create `.streamlit/secrets.toml` in the project root and exclude it from Git before adding credentials. The committed `.gitignore` currently does not explicitly exclude that file. Do not commit credentials or include them in container images.
 
-On a successful connection, the app creates its managed tables automatically. No separate migration command or daily download job is needed. Use **Open admin page** at the top of the sidebar for the storage overview and cleanup. See [Bounded shared storage](#bounded-shared-storage) and [Manual removal of old and new prices](#manual-removal-of-old-and-new-prices) for limits and deletion behavior.
+On a successful connection, the app creates its managed tables automatically. No separate migration command or daily download job is needed. Use **Open admin page** at the top of the sidebar for the storage overview and cleanup. See [Data Storage](#data-storage) and [Database Administration](#database-administration) for limits and deletion behavior.
 
 ### Alternative: Docker with local PostgreSQL
 
@@ -146,7 +302,7 @@ The named `postgres_data` volume retains local records after a normal shutdown. 
 3. Add optional top-level `DATABASE_URL` and `DATABASE_ADMIN_TOKEN` values under the app's **Settings → Secrets**, using the TOML examples below. Hosted secrets persist across sleep and restart.
 4. Deploy the app. Dependencies are installed from the root `requirements.txt`; Docker Compose is not used by Community Cloud.
 
-No database settings are needed for the memory-only dashboard. See [Resource controls and hosting](#resource-controls-and-hosting) for sleep behavior and resource limits.
+No database settings are needed for the memory-only dashboard. See [Resource Controls and Hosting](#resource-controls-and-hosting) for sleep behavior and resource limits.
 
 ### Common setup problems
 
@@ -159,55 +315,9 @@ No database settings are needed for the memory-only dashboard. See [Resource con
 | Admin controls stay locked | Configure both database URL and an administrator token of at least 24 characters, then restart the local app. |
 | Compose cannot bind a port | Stop the conflicting local service or change the host-side port mapping in a private override. |
 
-For tests, see [Validation](#validation). For the offline prediction study, see [Small offline model study](#small-offline-model-study).
+For tests, see [Evaluation](#evaluation). For the offline prediction study, see [Offline Model Study](#offline-model-study).
 
-## What happens when someone opens the app
-
-1. The dropdown combines the starter names in `data/companies.json`, saved database companies, and up to ten additional listings in the current session. Searching this dropdown makes no company-search API call.
-2. The selected stock first uses the shared four-hour memory cache. On a cache miss, the app checks Postgres when configured.
-3. Saved five-year prices downloaded less than 24 hours ago are reused without a provider download. Missing or older prices trigger a download for **that selected stock only**. There is no daily job downloading every saved company.
-4. Valid prices are upserted by ticker and session date, rather than appended repeatedly. Concurrent database requests coordinate through a three-minute refresh lease with a unique token. A completed refresh from an expired worker cannot overwrite a newer worker's results. Failed downloads release the lease and wait five minutes before another database-coordinated attempt.
-5. If the provider fails, existing saved prices remain visible with a warning and the last download time. If no saved prices exist, the app shows a retry message. A provider outage is not proof that a ticker is invalid.
-
-The URL stores the selected ticker, for example `?symbol=SONY`. After sleep or restart, that link restores the selection. A plain link defaults to AAPL. Other session choices and memory caches reset; database records remain. Opening a shared link for an uncached ticker can initiate its normal price download.
-
-Freshness refers to **download age**, not a guarantee of the latest market close. Memory caching can delay the next freshness check by up to four hours. Daily data may be delayed or include an unfinished session. Download time and latest bar date are displayed separately. A stale-data warning provides a manual retry button; the database retry delay still applies.
-
-## Bounded shared storage
-
-Add the following top-level Streamlit secret, or environment setting, to enable persistence:
-
-```toml
-DATABASE_URL = "your Neon PostgreSQL connection URL"
-```
-
-Use the existing database role with permission to create and read/write the app's tables. Keep credentials out of GitHub. On first successful connection, the app creates these additive tables:
-
-| Table | Purpose | Limit or retention |
-| --- | --- | --- |
-| `stock_companies` | Company names and JSON-encoded profiles | At most 50 saved companies |
-| `stock_daily_prices` | Adjusted daily OHLCV, unique `(symbol, Date)` | Rolling five calendar years; at most 1,500 rows per company |
-| `stock_refresh_status` | Last download, lease token, retry state | Saved companies plus bounded transient failed lookups; expired transient rows removed on refresh claims |
-| `stock_forecast_runs` | Forecast result and later observed return | 90 days; hard maximum 5,000 records |
-| `stock_maintenance` | Capacity coordination, weekly cleanup and history-upgrade markers | Two coordination rows plus one marker per saved company (up to 50) |
-
-Typical five-year equity history is around 1,260 daily rows per company, or around 63,000 price rows across 50 companies. The hard price cap is 75,000 rows. Exact storage bytes include profiles, forecasts, indexes, and PostgreSQL overhead; these are row bounds, not a promised database size or provider quota. Existing export tables count toward your Neon usage separately.
-
-At the company limit, new stocks can still be viewed in memory but are not saved, and the UI explains this. The app does not automatically evict saved companies. Unknown tickers with failed history downloads do not become saved companies. Charts and forecasts share the same saved five-year history. Forecasts use at most the latest five years of eligible supplied prices. Newer listings may have less history.
-
-A refresh downloads the complete five-year provider window, rather than only the latest day. This is a deliberate tradeoff: corporate actions can revise previously adjusted prices, so successful refreshes replace values for matching dates and remove dates absent from the current snapshot. Invalid or incomplete responses are not persisted. CSV download is available for the selected chart period.
-
-Connections use `NullPool`, closing client connections after each transaction instead of holding an idle connection open. Database errors fall back to API/memory when possible; fallback data is explicitly labelled and is not guaranteed to survive a restart. A database outage can increase provider calls after cache expiration. Refresh leases coordinate only when shared storage is available; the network and model semaphores apply per app process.
-
-## Cleanup and sleeping apps
-
-Automatic cleanup checks a **database-persisted timestamp**. When seven days have elapsed since the last successful cleanup, an active visit removes prices outside the five-year window and forecast records older than 90 days. Deletes and the timestamp update commit together; a failed cleanup rolls back and does not advance the timestamp. An hourly memory gate avoids checking maintenance on every rerun; a restarted process checks again. A successful price refresh also prunes that ticker immediately.
-
-A sleeping app performs **no downloads, model work, or cleanup**. Its next active visit checks whether cleanup is due and checks prices for the selected stock. Fresh saved data needs no download; stale or missing selected-stock data is downloaded automatically when available. There is no background scheduler inside this app, no polling loop, and no attempt to keep Neon permanently awake. Retention is enforced when the app is active, so unused records can remain past their cutoff during sleep.
-
-These managed tables are separate from previous ticker-named, `stocks`, and `prices_<hash>` export tables. Old exports are not imported or automatically removed. The dashboard no longer exposes the old replace-table export action. Automatic maintenance only deletes rows in `stock_daily_prices` and `stock_forecast_runs`.
-
-### Manual removal of old and new prices
+## Database Administration
 
 Click **Open admin page** at the top of the stock dashboard's sidebar, above **Chart period**, to open the separate **Database administration** page at `/admin`. Price charts and company search stay on the main page. Use **Back to Stock Explorer** to return; the selected ticker is preserved within the same session. Opening the admin page does not request market data, run forecasts, or automatically delete anything.
 
@@ -217,7 +327,7 @@ The admin controls are locked unless both `DATABASE_URL` and a private `DATABASE
 DATABASE_ADMIN_TOKEN = "a strong unique administrator password of at least 24 characters"
 ```
 
-#### One-time administrator setup
+### One-time administrator setup
 
 `DATABASE_ADMIN_TOKEN` is a private password you create yourself; it is not issued by Neon or Streamlit and is separate from your database password. On macOS, open Terminal and generate it with:
 
@@ -229,7 +339,7 @@ This prints a random 64-character value. Save it in your password manager, then 
 
 This setup is one-time: Streamlit retains the secrets across app sleep and restart. The administrator password is only needed for manual cleanup; automatic shared storage and weekly retention use `DATABASE_URL`. If the administrator token is missing, manual cleanup stays locked.
 
-#### Open the admin page and delete selected prices
+### Open the admin page and delete selected prices
 
 1. Click **Open admin page** at the top of the sidebar, or open [Database administration](https://stock-analysis-dashboardcloud-ga4trnosdubt58eqgynqtk.streamlit.app/admin) directly.
 2. Enter the generated token value in **Database administrator password**, then click **Unlock database cleanup**.
@@ -246,46 +356,21 @@ Eligible tables must have Date/Open/High/Low/Close/Volume columns and be `stock_
 
 Manual cleanup does not remove company profiles, forecast records, or existing memory cache entries. Removing saved prices is not a permanent suppression of future downloads: the next uncached request can download and save them again. Download a backup before deleting records you need.
 
-## Company search and overviews
+### Inspect Saved Storage
 
-Under **Company or ticker not listed?**, **Find companies** searches Yahoo Finance only when clicked, returning up to eight equity listings with exchange labels. News and recommendations are disabled. **Open selected company** validates daily history before saving the company name. A known ticker can be entered directly; symbols are normalized and format-checked before provider use.
+After unlocking the separate admin page, click **Refresh storage overview** to see saved company, price and forecast counts, limits, the last automatic cleanup and last price refresh. PostgreSQL also reports the whole database's size, including unrelated tables and indexes; this is not the Neon billing or compute quota. The overview is queried only on that button, requests no market data and starts no cleanup. Locking the page or deleting rows clears the overview snapshot. Deletion does not necessarily shrink physical files immediately; PostgreSQL reclaims old row versions through vacuuming.
 
-**Load company overview** is optional and button-driven. A complete saved database profile is reused for 30 days. After that, the button attempts a provider refresh. Failed or incomplete refreshes preserve the previous overview, which is marked older when returned as fallback. Successful profiles are saved within the company cap and shared through a bounded one-day memory cache. Browsing does not bulk-download missing overviews.
-
-The starter JSON contains 20 companies. To refresh its profiles offline:
+For the local Compose database, these read-only queries show row counts:
 
 ```bash
-python scripts/refresh_companies.py --symbols AAPL MSFT
+docker compose exec postgres psql -U postgres -d stocks -c "SELECT COUNT(*) AS saved_companies FROM stock_companies;"
+docker compose exec postgres psql -U postgres -d stocks -c "SELECT COUNT(*) AS saved_prices FROM stock_daily_prices;"
+docker compose exec postgres psql -U postgres -d stocks -c "SELECT COUNT(*) AS saved_predictions FROM stock_forecast_runs;"
 ```
 
-Review and commit successful JSON updates. Failed API refreshes preserve existing saved profiles. Runtime database updates do not modify repository files.
+These commands use the existing local Compose service and its development credentials. The tables exist after the app first connects successfully with `DATABASE_URL`. For Neon, use the hosted admin storage overview or the Neon SQL editor instead.
 
-## Analysis and prediction
-
-The dashboard shows period price return, standard deviation of daily returns, maximum drawdown, and summaries computed directly from prices. Comparisons align shared dates and start both series at 0% on their first shared date. Separate views provide line/candlestick charts, optional moving averages, volume, RSI, and MACD. Only the selected view runs; comparison requests require the **Compare stocks** button.
-
-Forecasting can predict an endpoint return over 1–63 observed trading-session bars (up to about three months) using past returns, moving-average distance, volatility, and relative volume. Ridge regression with training-fold standardization, an 80-tree regularized Random Forest, and 60 shallow gradient-boosted trees compete against an unchanged-price baseline in three expanding chronological development folds. Fixed hyperparameters limit computation and overfitting. The baseline wins exact ties; it is a testing benchmark and is never displayed as a new prediction.
-
-All candidates use the same folds and mean absolute return error. Horizon-sized purge gaps prevent training labels from reaching validation or test origins. The best development method is tested on a separate latest holdout with at least as many starting dates as the forecast horizon; test error is reported in percentage points. A learned model must beat the no-change benchmark in both development and the recent holdout. Otherwise the UI says **No model passed our prediction check**, shows testing details on request, and provides no endpoint price or 0% placeholder. The holdout does not choose another model or tune its settings. Only a passing model is refit using known historical labels to estimate the endpoint from the latest unlabelled row. At least 250 usable labelled rows and 50 initial-fold training examples are required. Passing these checks is not proof of statistical significance or future accuracy; overlapping targets are correlated.
-
-Only accepted predictions are persisted. Failed checks remain in the bounded one-day memory cache, avoiding repeated training in the same running process. When persistence is available, a forecast is recorded once per `(symbol, as_of, horizon, model_version)`. Later normal price refreshes evaluate pending forecasts once enough future bars exist. Both observed-return endpoints use the same current adjusted-price basis. **View past estimates** shows up to 30 recent predictions, observed returns, and pending/evaluated status. It does not download extra market data. Missing provider bars can affect the mapping from bar count to actual exchange sessions; forecasts use the conservative completed-bar rule below.
-
-Historical validation and later observations help assess the method; neither guarantees improved future accuracy. Overlapping multi-session targets are correlated. No confidence probability, synthetic daily price path, trading profit, or investment recommendation is claimed. Currency comes from the optional profile; otherwise values are labelled quote units.
-
-## Resource controls and hosting
-
-- History: four-hour memory cache, 48 entries; five years shared by every chart period.
-- Profiles and company searches: one-day memory caches, 48 entries each. Saved dropdown catalog: one-hour cache, cleared when a company profile is explicitly remembered.
-- Forecasts: one-day memory cache, 24 entries; button-driven, single CPU worker, one model computation at a time per process.
-- Provider calls: one nonblocking network slot per process, 12-second timeout. Competing cold requests receive a retry message or saved-price fallback.
-- Session cooldowns: 20 seconds for search, ticker lookup, comparisons, price retries, and forecasts; 60 seconds for overview lookup. These are basic resource controls, not complete abuse prevention.
-- Database transactions: five-second connection timeout, three-second lock timeout, twelve-second statement timeout; manual cleanup allows fifteen seconds for statements.
-
-These bounds reduce repeated work for visitors sharing tickers. They do not establish capacity for 100 simultaneous users or guarantee free-tier limits. Many different cold tickers can still hit provider rate limits. No paid service or new package is introduced.
-
-Streamlit Community Cloud can hibernate inactive apps. A stopped app cannot wake itself. The platform's visible **Yes, get this app back up!** button can restart it. An already configured external browser visit provides best-effort waking; normal startup may refresh the selected stock under the rules above. It does not guarantee permanent uptime or bypass hosting policy.
-
-## Validation
+## Evaluation
 
 ```bash
 python -m pip install pytest
@@ -296,40 +381,18 @@ Tests require neither production credentials nor live provider downloads. SQLite
 
 SQLite does not prove PostgreSQL row-lock behavior under real concurrent connections; the production SQL uses PostgreSQL row/advisory locks and conflict-aware inserts. A production load test and provider availability remain separate concerns.
 
-## Efficient storage and forecast reuse
+### Latest Recorded Validation
 
-Price refreshes still download the full five-year window so historical corporate-action revisions are detected. PostgreSQL inserts missing rows and updates existing OHLCV rows only when a value differs. Unchanged price rows are left untouched; refresh timestamps still advance. Storage remains limited to 50 companies, 1,500 price rows per company and 5,000 forecast records. No background downloads run while Streamlit sleeps.
+| Check | Recorded result |
+| --- | --- |
+| Automated project tests | 92 passed during the 2026-10-10 performance-and-risk update |
+| Offline historical model study | 0 of 27 checks passed both prediction criteria |
+| Docker startup | Not exercised in the hosted editing environment |
+| Production concurrency and provider availability | Not established by the unit tests |
 
-Forecast input and evaluation use daily bars at least **36 hours after their session-date midnight in UTC**. The app does not yet store exchange calendars or closing times, so this conservative buffer can exclude a completed recent bar and lag the chart. For example, a Friday-dated bar becomes eligible Saturday at 12:00 UTC. The completion filter is evaluated outside the memory cache, allowing eligibility to change without a new price download. This is a safety buffer, not a provider guarantee that bars cannot be revised.
+The test count records that code validation run, not a fresh test run each time this README changes. The model-study pass count is not an accuracy percentage.
 
-Before training, the app looks for a saved forecast matching the company, eligible final date, horizon, model version, completion policy and fingerprint of all model-input dates, closes and volumes. A matching forecast is reused even after the app restarts. Revised input or a changed version creates a separate record within the existing forecast limit. The UI shows the forecast data date and whether the result was calculated or reused. Existing earlier forecasts remain readable. No schema migration or new package is required.
-
-After unlocking the separate admin page, click **Refresh storage overview** to see saved company, price and forecast counts, limits, the last automatic cleanup and last price refresh. PostgreSQL also reports the whole database's size, including unrelated tables and indexes; this is not the Neon billing or compute quota. The overview is queried only on that button, requests no market data and starts no cleanup. Locking the page or deleting rows clears the overview snapshot. Deletion does not necessarily shrink physical files immediately; PostgreSQL reclaims old row versions through vacuuming.
-
-## Plain-language price estimates
-
-The **Prediction experiment** view explains model testing in everyday language. A failed check is an experiment result, while Overview and Compare remain useful for historical analysis. **How far ahead would you like to estimate?** counts trading days from the starting price date, excluding weekends and exchange holidays. **Calculate price estimate** runs the existing prediction methods; it adds no provider requests or new models.
-
-The result shows **Estimated price after N trading days**, the starting price and its date, and the estimated percentage change. That percentage is a price change, not an accuracy or confidence score. If no model passes both benchmark checks, no predicted-price card or 0% placeholder is shown. An accepted model may still have a very small return that rounds to 0.00%; this does not imply the actual price will stay unchanged. Accepted results show the recent average testing error beside the estimate. Model comparisons and error definitions are inside **How did we check this estimate?**. **View past estimates** uses readable labels for waiting and completed comparisons. Older saved results remain readable and are marked as predating the current check. New failed checks are not saved as predictions.
-
-
-Estimate periods include days, weeks and 1/2/3 months. Month choices use about 21 trading days per month; these are not exact calendar dates. Six-month and year options have been removed from this resource-limited model. Three chronological folds retain horizon-sized gaps, and smaller validation windows are used if needed to preserve at least 50 initial-fold training examples. An insufficient-history message appears when safe testing is impossible.
-
-## Five-year history upgrade
-
-The next active request for each existing saved stock treats its earlier two-year snapshot as stale and requests a five-year snapshot, even if its last download was recent. No all-company backfill runs. A small marker in the existing `stock_maintenance` table records each successful five-year refresh; no schema migration is needed. For newer listings, a successful shorter available history also receives the marker, preventing continuous backfill requests. Failed refreshes keep the old saved prices visible, with a stale-data notice and the existing retry backoff. A later visit can retry.
-
-After that upgrade, the same 24-hour shared freshness rule applies. Chart-period changes use the same history and do not cause separate two-year/five-year downloads. A refresh still downloads the full five-year daily window to catch adjusted-price revisions, but existing database rows update only if values changed. Prices are unique by company and date; the saved window rolls rather than growing forever. Cleanup remains due every seven days and runs on an active visit; a sleeping app performs no downloads or cleanup. The five-year cutoff and 1,500-row per-company cap are applied on each successful refresh. Profiles, the 50-company limit, and 90-day/5,000-row forecast retention are unchanged. The separate admin page still supports manual deletion.
-
-Forecast reuse has a new model-version identity, so older unchanged-price results cannot become new accepted predictions. The saved-store resource version also changes. At the first page startup for a runtime generation, a version check reloads older imported data adapters and the forecast module in dependency order if needed, then clears memory caches once (even when imports already match), so a multipage deployment can apply the new rules without relying on a process restart. Normal reruns and cold starts do not reload current adapters; admin startup performs no database or provider requests. Future changes to these adapter contracts should bump the matching `RUNTIME_VERSION` in `dashboard/runtime.py`, `dashboard/forecast.py`, `dashboard/market.py`, `dashboard/storage.py` and `etl/shared_store.py`. More historical data increases download, memory and database use, but does not guarantee smaller errors or a prediction for every company.
-
-## Performance and risk first
-
-Overview shows **Price change**, **Daily price variation** (standard deviation of daily percentage changes), and **Largest drop from a peak**. Plain-language help explains each number and its limits. The latest close's distance below the highest close in the selected period distinguishes the current position from the largest historical drop. These use provider-adjusted closing prices and do not calculate an investor's actual profit after cash payments, fees and taxes.
-
-Compare adds a side-by-side price-change, price-variation and peak-drop table calculated on exactly the shared dates used by its chart. Its variation statistic uses changes between consecutive shared dates, which can span more than one trading day when holidays or missing bars differ. Chart controls, saved prices, cleanup and provider request limits remain unchanged. Prediction has moved to **Prediction experiment** and does not run until its button is clicked.
-
-## Small offline model study
+## Offline Model Study
 
 The saved [study report](analysis/model-study-2026-10-10.md) and [machine-readable results](analysis/model-study-2026-10-10.json) evaluate AAPL, MSFT and JPM at three historical cutoffs, for 5-, 21- and 42-trading-day horizons: 27 checks. **None passed both benchmark checks** in this sample. This supports keeping prediction experimental; it does not prove that all stock forecasting methods fail. No model settings or acceptance rules were changed after seeing the results. The Prediction experiment view includes a clearly dated summary of this fixed study.
 
@@ -347,3 +410,78 @@ python scripts/evaluate_models.py \
 The script uses no API calls or database writes. It allows up to three stocks, three horizons and three historical snapshots; default snapshots remove 504, 252 and zero latest eligible rows. Models use the existing fixed settings, chronological purge gaps, separate recent holdout and completion buffer. JSON includes input fingerprints and testing dates; Markdown contains a readable result table. Forecasts for the current latest row are not recorded in Neon.
 
 The exports are currently adjusted historical prices, not archived point-in-time vintages. Snapshot histories have different lengths, some holdout periods overlap, and multi-day targets overlap within tests. The three stocks were deliberately chosen rather than sampled randomly. Pass counts are not accuracy percentages, independent trials, significance tests or proof of trading profit. Raw price CSVs remain local inputs and are not committed. Running this study again is a deliberate offline action, not a visitor-triggered job.
+
+## Resource Controls and Hosting
+
+- History: four-hour memory cache, 48 entries; five years shared by every chart period.
+- Profiles and company searches: one-day memory caches, 48 entries each. Saved dropdown catalog: one-hour cache, cleared when a company profile is explicitly remembered.
+- Forecasts: one-day memory cache, 24 entries; button-driven, single CPU worker, one model computation at a time per process.
+- Provider calls: one nonblocking network slot per process, 12-second timeout. Competing cold requests receive a retry message or saved-price fallback.
+- Session cooldowns: 20 seconds for search, ticker lookup, comparisons, price retries, and forecasts; 60 seconds for overview lookup. These are basic resource controls, not complete abuse prevention.
+- Database transactions: five-second connection timeout, three-second lock timeout, twelve-second statement timeout; manual cleanup allows fifteen seconds for statements.
+
+These bounds reduce repeated work for visitors sharing tickers. They do not establish capacity for 100 simultaneous users or guarantee free-tier limits. Many different cold tickers can still hit provider rate limits. No paid service or new package is introduced.
+
+Streamlit Community Cloud can hibernate inactive apps. A stopped app cannot wake itself. The platform's visible **Yes, get this app back up!** button can restart it. An already configured external browser visit provides best-effort waking; normal startup may refresh the selected stock under the rules above. It does not guarantee permanent uptime or bypass hosting policy.
+
+## Reliability and Access Controls
+
+- Price snapshots are validated before persistence.
+- Prices are unique by company and date; refreshes update changed values.
+- Database refresh leases use tokens to prevent expired workers from overwriting newer results.
+- Failed provider calls preserve saved data when available and apply retry backoff.
+- Chronological prediction tests include gaps that prevent future labels from entering earlier training.
+- A learned model must beat the benchmark in development and a separate recent test period.
+- Manual deletion requires an administrator token, an unlock session and explicit confirmation.
+- Cleanup targets eligible price tables; unrelated tables are excluded.
+- Database operations use bounded connection, lock and statement timeouts.
+- Administrator access expires after 15 minutes.
+
+The dashboard is public. The administrator token protects the separate maintenance controls; it is not a full user-account or role-management system.
+
+## Development Notes
+
+### Upgrading Saved History
+
+The next active request for each existing saved stock treats its earlier two-year snapshot as stale and requests a five-year snapshot, even if its last download was recent. No all-company backfill runs. A small marker in the existing `stock_maintenance` table records each successful five-year refresh; no schema migration is needed. For newer listings, a successful shorter available history also receives the marker, preventing continuous backfill requests. Failed refreshes keep the old saved prices visible, with a stale-data notice and the existing retry backoff. A later visit can retry.
+
+After that upgrade, the same 24-hour shared freshness rule applies. Chart-period changes use the same history and do not cause separate two-year/five-year downloads. A refresh still downloads the full five-year daily window to catch adjusted-price revisions, but existing database rows update only if values changed. Prices are unique by company and date; the saved window rolls rather than growing forever. Cleanup remains due every seven days and runs on an active visit; a sleeping app performs no downloads or cleanup. The five-year cutoff and 1,500-row per-company cap are applied on each successful refresh. Profiles, the 50-company limit, and 90-day/5,000-row forecast retention are unchanged. The separate admin page still supports manual deletion.
+
+Forecast reuse has a new model-version identity, so older unchanged-price results cannot become new accepted predictions. The saved-store resource version also changes. At the first page startup for a runtime generation, a version check reloads older imported data adapters and the forecast module in dependency order if needed, then clears memory caches once (even when imports already match), so a multipage deployment can apply the new rules without relying on a process restart. Normal reruns and cold starts do not reload current adapters; admin startup performs no database or provider requests. Future changes to these adapter contracts should bump the matching `RUNTIME_VERSION` in `dashboard/runtime.py`, `dashboard/forecast.py`, `dashboard/market.py`, `dashboard/storage.py` and `etl/shared_store.py`. More historical data increases download, memory and database use, but does not guarantee smaller errors or a prediction for every company.
+
+### Working with Configuration and Data
+
+- Run commands from the project root and use the same Python environment for installation and execution.
+- Top-level Streamlit secrets take precedence over environment variables.
+- The app does not automatically load a local `.env` file.
+- Runtime profile and price changes go to the optional database, not committed JSON files.
+- Refreshing the starter JSON catalog is a deliberate script action; review its changes before committing.
+- The model study uses exported CSV inputs without provider requests or database writes.
+- Existing legacy export tables are retained separately and count toward database usage.
+- No separate schema-migration framework, exchange-calendar service or background worker is included.
+
+## Current Limitations
+
+- Yahoo Finance data can be delayed, missing, revised or temporarily unavailable.
+- Five-year history is helpful for analysis but does not guarantee a useful prediction.
+- Daily bars are filtered with a conservative 36-hour buffer for prediction; the starting date can lag the chart.
+- Testing targets and periods can overlap, so results are not independent trials.
+- The saved study covers only three selected stocks and cannot establish general forecasting accuracy.
+- Return calculations use provider-adjusted prices and do not calculate an investor's actual after-fee or after-tax profit.
+- Free hosting can sleep; downloads and retention cleanup run only while the app is active.
+- Row limits bound saved data, but do not guarantee a specific Neon storage or compute bill.
+- Per-process request controls are not a complete public-service abuse-prevention or concurrency solution.
+- Docker uses the repository's existing local development configuration and needs an explicit `DATABASE_URL` override.
+
+## Future Improvements
+
+These are possible next steps, not features already implemented.
+
+- Add a CI workflow for the existing tests and documentation checks.
+- Validate PostgreSQL coordination under real concurrent connections.
+- Add exchange calendars and market closing times for more precise completed-session handling.
+- Expand model evaluation to more stocks and non-overlapping periods before changing prediction claims.
+- Investigate broader market and company features while measuring provider cost and out-of-sample benefit.
+- Improve container configuration with explicit environment templates and a build-context exclusion file.
+- Add stronger traffic controls if usage grows beyond the current small deployment.
+- Measure storage and compute use against actual Neon account limits.
