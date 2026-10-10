@@ -196,3 +196,28 @@ def test_write_failure_keeps_valid_prices_visible():
         assert len(result['prices'])==4 and not result['persisted']
         assert 'secret' not in result['notice']
     get_history.clear()
+
+
+def test_price_rows_have_hard_bound_even_with_every_calendar_day(repo):
+    data=frame('2024-11-01',700)
+    data['Date']=pd.date_range('2024-11-01',periods=700)
+    save(repo,data=data)
+    assert count(repo,prices)==600
+    assert repo.read_history('AAPL',NOW)['prices'].Date.iloc[0]==data.Date.iloc[-600]
+
+
+def test_profile_fresh_reuse_and_failed_refresh_preserves_previous():
+    from dashboard.market import get_profile
+    db=MagicMock()
+    db.read_profile.return_value={'symbol':'AAPL','name':'Apple','overview':'Saved text','profile_stale':False}
+    get_profile.clear()
+    with patch('dashboard.market.get_store',return_value=db),patch('dashboard.market.yf.Ticker') as api:
+        assert get_profile('AAPL')['overview']=='Saved text'
+        api.assert_not_called()
+        get_profile.clear()
+        db.read_profile.return_value['profile_stale']=True
+        api.return_value.get_info.side_effect=RuntimeError('private detail')
+        result=get_profile('AAPL')
+        assert result['overview']=='Saved text' and result['profile_stale']
+        db.save_profile.assert_not_called()
+    get_profile.clear()
