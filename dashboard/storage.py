@@ -2,6 +2,7 @@
 import hashlib
 import streamlit as st
 from dashboard.database_admin import setting
+RUNTIME_VERSION = 'five-year-predictions-v1'
 
 
 @st.cache_resource
